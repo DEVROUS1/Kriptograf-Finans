@@ -7,11 +7,10 @@ echo "🚀 KriptoGraf Finans - Gelişmiş Cloudflare Build Başlıyor..."
 export PROJECT_DIR=$(pwd)
 echo "📂 Proje Dizini: $PROJECT_DIR"
 
-# 2. Flutter'ı Cloudflare'ın git sistemini bozmamak için /opt altına kuralım
+# 2. Flutter'ı Cloudflare'ın git sistemini bozmamak için projenin dışında lokal bir klasöre kuralım
 echo "📦 Eski Flutter çakışması önleniyor..."
-cd /opt
-git clone https://github.com/flutter/flutter.git -b 3.24.5 /opt/flutter
-export PATH="$PATH:/opt/flutter/bin"
+git clone https://github.com/flutter/flutter.git -b 3.24.5 .flutter_sdk
+export PATH="$PATH:$PROJECT_DIR/.flutter_sdk/bin"
 
 # 3. Kendi kodumuza (frontend) geri dönelim
 cd "$PROJECT_DIR/frontend"
