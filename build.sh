@@ -1,25 +1,27 @@
 #!/bin/bash
-echo "🚀 KriptoGraf Finans - Cloudflare Build Başlıyor..."
+set -e
 
-# Ana dizinde miyiz kontrol edelim
-echo "📂 Mevcut dizin: $(pwd)"
-ls -la
+echo "🚀 KriptoGraf Finans - Gelişmiş Cloudflare Build Başlıyor..."
 
-# Flutter SDK'yı indir
-echo "📦 Flutter indiriliyor..."
-git clone https://github.com/flutter/flutter.git -b stable
-export PATH="$PATH:`pwd`/flutter/bin"
+# 1. İşlem göreceğimiz asıl dizini (repo) kaydedelim
+export PROJECT_DIR=$(pwd)
+echo "📂 Proje Dizini: $PROJECT_DIR"
 
-# Frontend klasörüne gir
-echo "➡️ Frontend dizinine geçiliyor..."
-cd frontend
-echo "📂 Yeni dizin: $(pwd)"
+# 2. Flutter'ı Cloudflare'ın git sistemini bozmamak için /opt altına kuralım
+echo "📦 Eski Flutter çakışması önleniyor..."
+cd /opt
+git clone https://github.com/flutter/flutter.git -b 3.24.5 /opt/flutter
+export PATH="$PATH:/opt/flutter/bin"
 
-# Flutter komutlarını çalıştır
+# 3. Kendi kodumuza (frontend) geri dönelim
+cd "$PROJECT_DIR/frontend"
+echo "📂 Çalışma Dizini: $(pwd)"
+
+# 4. Derlemeyi tamamlayalım
 echo "⚙️ Flutter paketleri alınıyor..."
 flutter pub get
 
 echo "🔨 Web sürümü derleniyor..."
 flutter build web --release
 
-echo "✅ Derleme tamamlandı!"
+echo "✅ Derleme Başarılı!"
