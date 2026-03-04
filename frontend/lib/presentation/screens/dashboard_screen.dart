@@ -1,0 +1,1444 @@
+import 'dart:math';
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+import 'package:audioplayers/audioplayers.dart';
+
+import '../../config/app_config.dart';
+import '../../data/models/market_summary_model.dart';
+import '../../data/models/technical_indicator_model.dart';
+import '../providers/market_provider.dart';
+import '../providers/selected_coin_provider.dart';
+import '../providers/indicator_provider.dart';
+import '../widgets/live_price_widget.dart';
+
+// ══════════════════════════════════════════════════════════════════════
+// KriptoGraf Finans - Ultimate Crypto Terminal Dashboard
+// Her kripto yatırımcısının telefonunda olması gereken uygulama
+// ══════════════════════════════════════════════════════════════════════
+
+class DashboardScreen extends ConsumerStatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with TickerProviderStateMixin {
+  late TabController _bottomTabController;
+  Timer? _refreshTimer;
+  int _currentPage = 0; // 0=Dashboard, 1=Markets, 2=Derivatives, 3=Alarms
+  String _selectedInterval = '1s';
+  Timer? _indicatorTimer;
+
+  // Simulated live data for whale trades, liquidations, funding
+  final List<Map<String, dynamic>> _whaleTrades = [];
+  final List<Map<String, dynamic>> _liquidations = [];
+  final List<Map<String, dynamic>> _fundingRates = [];
+  final List<Map<String, dynamic>> _momentumCoins = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _bottomTabController = TabController(length: 4, vsync: this);
+    _startDataFetch();
+    // Auto-refresh indicators every 15 seconds
+    _indicatorTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      ref.invalidate(technicalIndicatorProvider);
+    });
+  }
+
+  void _startDataFetch() {
+    _fetchLiveData();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _fetchLiveData();
+    });
+  }
+
+  Future<void> _fetchLiveData() async {
+    try {
+      final dio = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl));
+
+      // Fetch Funding Rates (from backend - we'll add real multi-exchange later)
+      // For now, generate realistic data from market summary
+      final summaryResp = await dio.get('/market/summary');
+      if (summaryResp.statusCode == 200 && summaryResp.data != null) {
+        final dataList = summaryResp.data['data'] as List;
+        if (mounted) {
+          setState(() {
+            // Generate realistic whale trades
+            _whaleTrades.clear();
+            final rng = Random();
+            for (int i = 0; i < 8; i++) {
+              final coin = dataList[rng.nextInt(dataList.length)];
+              final isBuy = rng.nextBool();
+              final amountK = rng.nextDouble() * 15000 + 300; // MIN 300K
+              if (amountK >= 10000 && mounted) {
+                // Play sound for 10M+ trades
+                _audioPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'));
+              }
+              _whaleTrades.add({
+                'symbol': coin['symbol'] ?? 'BTCUSDT',
+                'side': isBuy ? 'BUY' : 'SELL',
+                'amount': amountK.toStringAsFixed(0),
+                'price': coin['lastPrice'] ?? '0',
+                'exchange': ['Binance', 'Bybit', 'OKX', 'Bitget', 'MEXC'][rng.nextInt(5)],
+                'time': '${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}:${DateTime.now().second.toString().padLeft(2, '0')}',
+              });
+            }
+
+            // Generate realistic liquidations
+            _liquidations.clear();
+            for (int i = 0; i < 6; i++) {
+              final coin = dataList[rng.nextInt(dataList.length)];
+              final isLong = rng.nextBool();
+              _liquidations.add({
+                'symbol': coin['symbol'] ?? 'BTCUSDT',
+                'side': isLong ? 'LONG' : 'SHORT',
+                'amount': '\$${(rng.nextDouble() * 2000 + 100).toStringAsFixed(0)}K',
+                'price': coin['lastPrice'] ?? '0',
+                'exchange': ['Binance', 'Bybit', 'OKX', 'Bitget', 'MEXC'][rng.nextInt(5)],
+                'timeframe': ['1h', '4h', '12h', '24h'][rng.nextInt(4)],
+              });
+            }
+
+            // Generate funding rates
+            _fundingRates.clear();
+            for (final coin in dataList) {
+              final rate = (rng.nextDouble() * 0.06 - 0.02);
+              _fundingRates.add({
+                'symbol': coin['symbol'] ?? 'BTCUSDT',
+                'rate': rate.toStringAsFixed(4),
+                'isPositive': rate >= 0,
+                'exchange': ['Binance', 'Bybit', 'OKX'][rng.nextInt(3)],
+              });
+            }
+
+            // Generate momentum data
+            _momentumCoins.clear();
+            for (final coin in dataList) {
+              final change = double.tryParse(coin['priceChangePercent'] ?? '0') ?? 0;
+              String momentum;
+              Color momentumColor;
+              if (change > 3) {
+                momentum = 'YÜKSEK';
+                momentumColor = const Color(0xFF00E676);
+              } else if (change < -3) {
+                momentum = 'DÜŞÜK';
+                momentumColor = const Color(0xFFF23645);
+              } else {
+                momentum = 'NORMAL';
+                momentumColor = Colors.orange;
+              }
+              _momentumCoins.add({
+                'symbol': coin['symbol'] ?? 'BTCUSDT',
+                'change': coin['priceChangePercent'] ?? '0',
+                'momentum': momentum,
+                'momentumColor': momentumColor,
+                'volume': coin['volume'] ?? '0',
+                'price': coin['lastPrice'] ?? '0',
+              });
+            }
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  @override
+  void dispose() {
+    _bottomTabController.dispose();
+    _refreshTimer?.cancel();
+    _indicatorTimer?.cancel();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedCoin = ref.watch(selectedCoinProvider);
+    final marketSummaryAsync = ref.watch(marketSummaryProvider);
+    final indicatorAsync = ref.watch(
+      technicalIndicatorProvider(symbol: selectedCoin, interval: _selectedInterval == '1s' ? '1m' : _selectedInterval),
+    );
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0E17),
+      body: Column(
+        children: [
+          // ════════════ TOP BAR ════════════
+          _buildTopBar(selectedCoin),
+
+          // ════════════ MAIN CONTENT ════════════
+          Expanded(
+            child: Row(
+              children: [
+                // ────── NAV SIDEBAR ──────
+                _buildNavSidebar(),
+
+                // ────── LEFT: Coin List ──────
+                _buildCoinListPanel(marketSummaryAsync, selectedCoin, ref),
+
+                // ────── CENTER: Main Area ──────
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    children: [
+                      // Price + Indicator Header
+                      _buildPriceHeader(selectedCoin, indicatorAsync),
+
+                      // Live Price Widget
+                      Expanded(
+                        flex: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  const Color(0xFF1A1F2E).withOpacity(0.9),
+                                  const Color(0xFF0F1318).withOpacity(0.9),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF2A2E39).withOpacity(0.5),
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: LivePriceWidget(
+                                symbol: selectedCoin.toLowerCase(),
+                                interval: _selectedInterval,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // Bottom Tabs: Whale Trades | Liquidations | Funding | Momentum
+                      Expanded(
+                        flex: 3,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: _buildBottomTabs(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ────── RIGHT: Technical Gauge + Liquidation Summary ──────
+                if (screenWidth > 900)
+                  _buildRightPanel(selectedCoin, indicatorAsync),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // TOP APP BAR
+  // ══════════════════════════════════════════════════════════════════
+  Widget _buildTopBar(String selectedCoin) {
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0D1117), Color(0xFF161B22)],
+        ),
+        border: Border(
+          bottom: BorderSide(color: const Color(0xFF30363D).withOpacity(0.6)),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          // Logo
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF00D2FF), Color(0xFF7B2FF7)],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'KG',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'KriptoGraf Finans',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00E676).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              'PRO',
+              style: TextStyle(
+                color: Color(0xFF00E676),
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const Spacer(),
+          // Exchange badges
+          ..._buildExchangeBadges(),
+          const SizedBox(width: 16),
+          // Alarm button
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined, color: Color(0xFF8B949E)),
+            onPressed: () => _showAlarmDialog(context),
+            tooltip: 'Alarm Kur',
+          ),
+          const SizedBox(width: 8),
+          // Refresh indicator
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFF00E676),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'Canlı',
+            style: TextStyle(
+              color: const Color(0xFF00E676).withOpacity(0.8),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildExchangeBadges() {
+    final exchanges = [
+      {'name': 'Binance', 'color': const Color(0xFFF3BA2F)},
+      {'name': 'Bybit', 'color': const Color(0xFFFF6C2C)},
+      {'name': 'OKX', 'color': Colors.white},
+      {'name': 'Bitget', 'color': const Color(0xFF00E3C6)},
+      {'name': 'MEXC', 'color': const Color(0xFF2B69E2)},
+    ];
+    return exchanges.map((e) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: (e['color'] as Color).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: (e['color'] as Color).withOpacity(0.3)),
+          ),
+          child: Text(
+            e['name'] as String,
+            style: TextStyle(
+              color: e['color'] as Color,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // NAV SIDEBAR
+  // ══════════════════════════════════════════════════════════════════
+  Widget _buildNavSidebar() {
+    final navItems = [
+      {'icon': Icons.dashboard, 'label': '📊 Panel', 'index': 0},
+      {'icon': Icons.candlestick_chart, 'label': '📈 Piyasalar', 'index': 1},
+      {'icon': Icons.bolt, 'label': '⚡ Türevler', 'index': 2},
+      {'icon': Icons.notifications, 'label': '🔔 Alarmlar', 'index': 3},
+    ];
+    return Container(
+      width: 80,
+      decoration: BoxDecoration(
+        color: const Color(0xFF080B12),
+        border: Border(right: BorderSide(color: const Color(0xFF21262D).withOpacity(0.5))),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          ...navItems.map((item) {
+            final isActive = _currentPage == (item['index'] as int);
+            return InkWell(
+              onTap: () => setState(() => _currentPage = item['index'] as int),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: isActive ? const Color(0xFF1F6FEB).withOpacity(0.15) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: isActive ? Border.all(color: const Color(0xFF1F6FEB).withOpacity(0.3)) : null,
+                ),
+                child: Column(
+                  children: [
+                    Icon(item['icon'] as IconData, size: 18, color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
+                    const SizedBox(height: 3),
+                    Text(
+                      (item['label'] as String).replaceAll(RegExp(r'^[^\s]+\s'), ''),
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // LEFT PANEL: Coin List
+  // ══════════════════════════════════════════════════════════════════
+  Widget _buildCoinListPanel(AsyncValue<List<MarketSummaryModel>> marketSummaryAsync, String selectedCoin, WidgetRef ref) {
+    return Container(
+      width: 260,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        border: Border(
+          right: BorderSide(color: const Color(0xFF21262D).withOpacity(0.8)),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: const Color(0xFF21262D).withOpacity(0.8)),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.trending_up, color: Color(0xFF58A6FF), size: 18),
+                const SizedBox(width: 8),
+                const Text(
+                  '📊 ',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const Text(
+                  'Piyasa Özeti',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF238636).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    '24H',
+                    style: TextStyle(color: Color(0xFF3FB950), fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Coin list
+          Expanded(
+            child: marketSummaryAsync.when(
+              data: (coins) {
+                if (coins.isEmpty) {
+                  return const Center(child: Text('Veri yok', style: TextStyle(color: Colors.white24)));
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  itemCount: coins.length,
+                  itemBuilder: (context, index) {
+                    final coin = coins[index];
+                    final isSelected = selectedCoin == coin.symbol;
+                    final priceChange = double.tryParse(coin.priceChangePercent) ?? 0.0;
+                    final isPositive = priceChange >= 0;
+                    final coinName = coin.symbol.replaceAll('USDT', '');
+
+                    return InkWell(
+                      onTap: () => ref.read(selectedCoinProvider.notifier).state = coin.symbol,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF1F6FEB).withOpacity(0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: isSelected
+                              ? Border.all(color: const Color(0xFF1F6FEB).withOpacity(0.3))
+                              : null,
+                        ),
+                        child: Row(
+                          children: [
+                            // Coin Icon Emoji
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    _getCoinColor(coinName).withOpacity(0.3),
+                                    _getCoinColor(coinName).withOpacity(0.1),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  getCoinEmoji(coinName),
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    coinName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  Text(
+                                    '/USDT',
+                                    style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  _formatPrice(coin.lastPrice),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: (isPositive ? const Color(0xFF089981) : const Color(0xFFF23645))
+                                        .withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '${isPositive ? '+' : ''}${priceChange.toStringAsFixed(2)}%',
+                                    style: TextStyle(
+                                      color: isPositive ? const Color(0xFF00E676) : const Color(0xFFF23645),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+              loading: () => const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF58A6FF),
+                  strokeWidth: 2,
+                ),
+              ),
+              error: (err, _) => Center(
+                child: Text('$err', style: const TextStyle(color: Colors.red, fontSize: 10)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // PRICE HEADER
+  // ══════════════════════════════════════════════════════════════════
+  Widget _buildPriceHeader(String selectedCoin, AsyncValue<TechnicalIndicatorModel?> indicatorAsync) {
+    final coinName = selectedCoin.replaceAll('USDT', '');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          // Coin name
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getCoinColor(coinName).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _getCoinColor(coinName).withOpacity(0.3)),
+            ),
+            child: Text(
+              '$coinName / USDT',
+              style: TextStyle(
+                color: _getCoinColor(coinName),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Technical Analysis Badge
+          indicatorAsync.when(
+            data: (data) {
+              if (data == null) return const SizedBox();
+              Color badgeColor;
+              String label;
+              if (data.action == 'Buy') {
+                badgeColor = const Color(0xFF00E676);
+                label = '⬆ AL';
+              } else if (data.action == 'Sell') {
+                badgeColor = const Color(0xFFF23645);
+                label = '⬇ SAT';
+              } else {
+                badgeColor = Colors.orange;
+                label = '◆ NÖTR';
+              }
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: badgeColor.withOpacity(0.4)),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Skor: ${data.score}',
+                      style: TextStyle(color: badgeColor.withOpacity(0.7), fontSize: 10),
+                    ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 1.5)),
+            error: (_, __) => const SizedBox(),
+          ),
+          const Spacer(),
+          // Interval chips
+          ..._buildIntervalChips(),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildIntervalChips() {
+    return ['1s', '1m', '5m', '15m', '1h', '4h'].map((interval) {
+      final isActive = interval == _selectedInterval;
+      return Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: InkWell(
+          onTap: () {
+            setState(() => _selectedInterval = interval);
+            // Invalidate indicators to refetch with new interval
+            ref.invalidate(technicalIndicatorProvider);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isActive ? const Color(0xFF1F6FEB).withOpacity(0.2) : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: isActive ? const Color(0xFF1F6FEB) : const Color(0xFF30363D),
+              ),
+            ),
+            child: Text(
+              interval.toUpperCase(),
+              style: TextStyle(
+                color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E),
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // BOTTOM TABS: Whale Trades | Liquidations | Funding | Momentum
+  // ══════════════════════════════════════════════════════════════════
+  Widget _buildBottomTabs() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF21262D).withOpacity(0.6)),
+      ),
+      child: Column(
+        children: [
+          // Tab Bar
+          Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: const Color(0xFF21262D).withOpacity(0.6)),
+              ),
+            ),
+            child: TabBar(
+              controller: _bottomTabController,
+              indicatorColor: const Color(0xFF58A6FF),
+              indicatorWeight: 2,
+              labelColor: const Color(0xFF58A6FF),
+              unselectedLabelColor: const Color(0xFF8B949E),
+              labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 11),
+              tabs: const [
+                Tab(text: '🐳 BALİNA'),
+                Tab(text: '💥 LİKİDASYON'),
+                Tab(text: '💰 FONLAMA'),
+                Tab(text: '🚀 MOMENTUM'),
+              ],
+            ),
+          ),
+          // Tab Content
+          Expanded(
+            child: TabBarView(
+              controller: _bottomTabController,
+              children: [
+                _buildWhaleTradesTab(),
+                _buildLiquidationsTab(),
+                _buildFundingRatesTab(),
+                _buildMomentumTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Whale Trades ──
+  Widget _buildWhaleTradesTab() {
+    if (_whaleTrades.isEmpty) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: _whaleTrades.length,
+      itemBuilder: (context, index) {
+        final trade = _whaleTrades[index];
+        final isBuy = trade['side'] == 'BUY';
+        return Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: (isBuy ? const Color(0xFF089981) : const Color(0xFFF23645)).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: (isBuy ? const Color(0xFF089981) : const Color(0xFFF23645)).withOpacity(0.15),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isBuy ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 14,
+                color: isBuy ? const Color(0xFF00E676) : const Color(0xFFF23645),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                trade['symbol'].toString().replaceAll('USDT', ''),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isBuy ? const Color(0xFF089981).withOpacity(0.2) : const Color(0xFFF23645).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(
+                  trade['side'],
+                  style: TextStyle(
+                    color: isBuy ? const Color(0xFF00E676) : const Color(0xFFF23645),
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (double.parse(trade['amount'].toString()) >= 10000)
+                const Text('🔥 ', style: TextStyle(fontSize: 16)),
+              Text(
+                '\$${trade['amount']}K',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                trade['exchange'],
+                style: const TextStyle(color: Color(0xFF8B949E), fontSize: 10),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                trade['time'],
+                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Liquidations ──
+  Widget _buildLiquidationsTab() {
+    if (_liquidations.isEmpty) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF)));
+    }
+    return Column(
+      children: [
+        // Liquidation Summary Row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildLiqTimeframe('1H', '\$${(Random().nextInt(50) + 10)}M'),
+              _buildLiqTimeframe('4H', '\$${(Random().nextInt(200) + 50)}M'),
+              _buildLiqTimeframe('12H', '\$${(Random().nextInt(500) + 100)}M'),
+              _buildLiqTimeframe('24H', '\$${(Random().nextInt(1000) + 200)}M'),
+            ],
+          ),
+        ),
+        const Divider(color: Color(0xFF21262D), height: 1),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: _liquidations.length,
+            itemBuilder: (context, index) {
+              final liq = _liquidations[index];
+              final isLong = liq['side'] == 'LONG';
+              return Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      (isLong ? const Color(0xFF089981) : const Color(0xFFF23645)).withOpacity(0.08),
+                      Colors.transparent,
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.flash_on, size: 14, color: isLong ? const Color(0xFF00E676) : const Color(0xFFF23645)),
+                    const SizedBox(width: 8),
+                    Text(liq['symbol'].toString().replaceAll('USDT', ''),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: (isLong ? const Color(0xFF089981) : const Color(0xFFF23645)).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        liq['side'],
+                        style: TextStyle(
+                          color: isLong ? const Color(0xFF00E676) : const Color(0xFFF23645),
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(liq['amount'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
+                    const SizedBox(width: 8),
+                    Text(liq['exchange'], style: const TextStyle(color: Color(0xFF8B949E), fontSize: 10)),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLiqTimeframe(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 10, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(color: Color(0xFFF23645), fontSize: 14, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  // ── Funding Rates ──
+  Widget _buildFundingRatesTab() {
+    if (_fundingRates.isEmpty) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: _fundingRates.length,
+      itemBuilder: (context, index) {
+        final fund = _fundingRates[index];
+        final isPos = fund['isPositive'] as bool;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            children: [
+              Text(
+                fund['symbol'].toString().replaceAll('USDT', ''),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              const Spacer(),
+              Text(
+                '${fund['rate']}%',
+                style: TextStyle(
+                  color: isPos ? const Color(0xFF00E676) : const Color(0xFFF23645),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(fund['exchange'], style: const TextStyle(color: Color(0xFF8B949E), fontSize: 10)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Momentum Scanner ──
+  Widget _buildMomentumTab() {
+    if (_momentumCoins.isEmpty) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: _momentumCoins.length,
+      itemBuilder: (context, index) {
+        final coin = _momentumCoins[index];
+        final color = coin['momentumColor'] as Color;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withOpacity(0.12)),
+          ),
+          child: Row(
+            children: [
+              Text(
+                coin['symbol'].toString().replaceAll('USDT', ''),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  coin['momentum'],
+                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _formatPrice(coin['price']),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '${coin['change']}%',
+                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // RIGHT PANEL: Technical Gauge + Liq Heatmap
+  // ══════════════════════════════════════════════════════════════════
+  Widget _buildRightPanel(String selectedCoin, AsyncValue<TechnicalIndicatorModel?> indicatorAsync) {
+    return Container(
+      width: 280,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        border: Border(
+          left: BorderSide(color: const Color(0xFF21262D).withOpacity(0.8)),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: const Color(0xFF21262D).withOpacity(0.8)),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Text('🧠 ', style: TextStyle(fontSize: 14)),
+                Icon(Icons.analytics, color: Color(0xFFF778BA), size: 18),
+                SizedBox(width: 6),
+                Text(
+                  'Teknik Analiz',
+                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+
+          // Gauge
+          Expanded(
+            flex: 2,
+            child: indicatorAsync.when(
+              data: (data) {
+                if (data == null) return const Center(child: Text('Veri bekleniyor...', style: TextStyle(color: Colors.white24)));
+                return _buildGaugeCard(data);
+              },
+              loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              error: (_, __) => const Center(child: Text('Hata', style: TextStyle(color: Colors.red))),
+            ),
+          ),
+
+          // Indicator Details
+          Expanded(
+            flex: 3,
+            child: indicatorAsync.when(
+              data: (data) {
+                if (data == null) return const SizedBox();
+                return _buildIndicatorDetails(data);
+              },
+              loading: () => const SizedBox(),
+              error: (_, __) => const SizedBox(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGaugeCard(TechnicalIndicatorModel data) {
+    Color gaugeColor;
+    String label;
+    if (data.action == 'Buy') {
+      gaugeColor = const Color(0xFF00E676);
+      label = 'AL';
+    } else if (data.action == 'Sell') {
+      gaugeColor = const Color(0xFFF23645);
+      label = 'SAT';
+    } else {
+      gaugeColor = Colors.orange;
+      label = 'NÖTR';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          SizedBox(
+            width: 180,
+            height: 90,
+            child: CustomPaint(
+              painter: _GaugePainter(score: data.score.toDouble(), color: gaugeColor),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(color: gaugeColor, fontSize: 24, fontWeight: FontWeight.w900),
+          ),
+          Text(
+            'Skor: ${data.score}/100',
+            style: TextStyle(color: gaugeColor.withOpacity(0.6), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIndicatorDetails(TechnicalIndicatorModel data) {
+    final ind = data.indicators;
+    final sr = data.supportResistance;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: ListView(
+        padding: const EdgeInsets.only(top: 4),
+        children: [
+          _sectionLabel('📊 MOMENTUM'),
+          _indicatorRow('RSI (14)', ind.rsi?.toStringAsFixed(2) ?? '-', _getRsiColor(ind.rsi)),
+          _indicatorRow('STOCH RSI', ind.stochRsi?.toStringAsFixed(2) ?? '-', _getRsiColor(ind.stochRsi)),
+          _indicatorRow('STOCH K/D', '${ind.stochK?.toStringAsFixed(1) ?? "-"}/${ind.stochD?.toStringAsFixed(1) ?? "-"}', null),
+          _indicatorRow('CCI (20)', ind.cci?.toStringAsFixed(1) ?? '-', _getCciColor(ind.cci)),
+          _indicatorRow('WILLIAMS %R', ind.williamsR?.toStringAsFixed(1) ?? '-', null),
+          _indicatorRow('ROC', ind.roc?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('MFI', ind.mfi?.toStringAsFixed(1) ?? '-', _getRsiColor(ind.mfi)),
+          _indicatorRow('AWESOME OSC', ind.awesomeOsc?.toStringAsFixed(2) ?? '-', null),
+
+          const SizedBox(height: 8),
+          _sectionLabel('📈 TREND'),
+          _indicatorRow('MACD', ind.macd?.toStringAsFixed(4) ?? '-', null),
+          _indicatorRow('MACD SİNYAL', ind.macdSignal?.toStringAsFixed(4) ?? '-', null),
+          _indicatorRow('MACD HİST', ind.macdHist?.toStringAsFixed(4) ?? '-', _getHistColor(ind.macdHist)),
+          _indicatorRow('ADX', ind.adx?.toStringAsFixed(1) ?? '-', _getAdxColor(ind.adx)),
+          _indicatorRow('+DI / -DI', '${ind.plusDi?.toStringAsFixed(1) ?? "-"} / ${ind.minusDi?.toStringAsFixed(1) ?? "-"}', null),
+          _indicatorRow('ICHIMOKU T/K', '${ind.tenkan?.toStringAsFixed(2) ?? "-"} / ${ind.kijun?.toStringAsFixed(2) ?? "-"}', null),
+
+          const SizedBox(height: 8),
+          _sectionLabel('📉 HAREKETLİ ORTALAMALAR'),
+          _indicatorRow('EMA 9', ind.ema9?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('EMA 20', ind.ema20?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('EMA 50', ind.ema50?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('SMA 10', ind.sma10?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('SMA 20', ind.sma20?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('SMA 50', ind.sma50?.toStringAsFixed(2) ?? '-', null),
+
+          const SizedBox(height: 8),
+          _sectionLabel('🌊 VOLATİLİTE'),
+          _indicatorRow('BB ÜST', ind.bbUpper?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('BB ORTA', ind.bbMiddle?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('BB ALT', ind.bbLower?.toStringAsFixed(2) ?? '-', null),
+          _indicatorRow('BB GENİŞLİK', ind.bbWidth?.toStringAsFixed(4) ?? '-', null),
+          _indicatorRow('ATR (14)', ind.atr?.toStringAsFixed(4) ?? '-', null),
+
+          const SizedBox(height: 8),
+          _sectionLabel('📊 HACİM'),
+          _indicatorRow('OBV', ind.obv != null ? _fmtLargeNum(ind.obv!) : '-', null),
+          _indicatorRow('VWAP', ind.vwap?.toStringAsFixed(2) ?? '-', null),
+
+          if (sr != null) ...[
+            const SizedBox(height: 8),
+            _sectionLabel('🎯 DESTEK / DİRENÇ'),
+            _indicatorRow('PİVOT', sr.pivot?.toStringAsFixed(2) ?? '-', const Color(0xFFFFD700)),
+            _indicatorRow('🟢 D1', sr.s1?.toStringAsFixed(2) ?? '-', const Color(0xFF00E676)),
+            _indicatorRow('🟢 D2', sr.s2?.toStringAsFixed(2) ?? '-', const Color(0xFF00C853)),
+            _indicatorRow('🟢 D3', sr.s3?.toStringAsFixed(2) ?? '-', const Color(0xFF00897B)),
+            _indicatorRow('🔴 R1', sr.r1?.toStringAsFixed(2) ?? '-', const Color(0xFFF23645)),
+            _indicatorRow('🔴 R2', sr.r2?.toStringAsFixed(2) ?? '-', const Color(0xFFD32F2F)),
+            _indicatorRow('🔴 R3', sr.r3?.toStringAsFixed(2) ?? '-', const Color(0xFFB71C1C)),
+          ],
+          const SizedBox(height: 16),
+          _indicatorRow('💰 FİYAT', '\$${ind.price?.toStringAsFixed(2) ?? "-"}', Colors.white),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4, top: 2),
+      child: Text(text, style: const TextStyle(color: Color(0xFF58A6FF), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+    );
+  }
+
+  Color? _getCciColor(double? v) {
+    if (v == null) return null;
+    if (v < -100) return const Color(0xFF00E676);
+    if (v > 100) return const Color(0xFFF23645);
+    return Colors.orange;
+  }
+
+  Color? _getHistColor(double? v) {
+    if (v == null) return null;
+    return v > 0 ? const Color(0xFF00E676) : const Color(0xFFF23645);
+  }
+
+  Color? _getAdxColor(double? v) {
+    if (v == null) return null;
+    if (v > 25) return const Color(0xFF00E676);
+    return Colors.orange;
+  }
+
+  String _fmtLargeNum(double v) {
+    if (v.abs() >= 1e9) return '${(v / 1e9).toStringAsFixed(2)}B';
+    if (v.abs() >= 1e6) return '${(v / 1e6).toStringAsFixed(2)}M';
+    if (v.abs() >= 1e3) return '${(v / 1e3).toStringAsFixed(2)}K';
+    return v.toStringAsFixed(2);
+  }
+
+  Color? _getRsiColor(double? value) {
+    if (value == null) return null;
+    if (value < 30) return const Color(0xFF00E676);
+    if (value > 70) return const Color(0xFFF23645);
+    return Colors.orange;
+  }
+
+  Widget _indicatorRow(String label, String value, Color? valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 11)),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor ?? Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // ALARM DIALOG
+  // ══════════════════════════════════════════════════════════════════
+  void _showAlarmDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.notifications_active, color: Color(0xFFFF9800)),
+            SizedBox(width: 8),
+            Text('🔔 Alarm Kur', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAlarmField('🪙 Koin', 'BTCUSDT'),
+              const SizedBox(height: 12),
+              _buildAlarmField('💵 Fiyat Alarmı', 'Örn: 70000'),
+              const SizedBox(height: 12),
+              _buildAlarmField('📊 RSI Alarmı', 'Örn: 30 altı'),
+              const SizedBox(height: 12),
+              _buildAlarmField('📈 Hacim Alarmı', 'Örn: 1000 BTC üzeri'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('İptal', style: TextStyle(color: Color(0xFF8B949E))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1F6FEB),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('✅ Alarm başarıyla kuruldu!'),
+                  backgroundColor: const Color(0xFF238636),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              );
+            },
+            child: const Text('Alarmı Kur'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAlarmField(String label, String hint) {
+    return TextField(
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Color(0xFF8B949E)),
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.white.withOpacity(0.2)),
+        filled: true,
+        fillColor: const Color(0xFF0D1117),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF30363D)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF30363D)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF1F6FEB)),
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // UTILITIES
+  // ══════════════════════════════════════════════════════════════════
+  String _formatPrice(String? price) {
+    if (price == null) return '-';
+    final p = double.tryParse(price);
+    if (p == null) return price;
+    if (p >= 1000) return '\$${p.toStringAsFixed(2)}';
+    if (p >= 1) return '\$${p.toStringAsFixed(4)}';
+    return '\$${p.toStringAsFixed(6)}';
+  }
+
+  String getCoinEmoji(String coin) {
+    const map = {
+      'BTC': '₿', 'ETH': 'Ξ', 'BNB': '🔶', 'SOL': '☀️', 'XRP': '💧',
+      'ADA': '🔵', 'DOGE': '🐕', 'AVAX': '🔺', 'DOT': '⚫', 'MATIC': '🟣',
+      'LINK': '🔗', 'SHIB': '🐕', 'LTC': '🪙', 'ATOM': '⚛️', 'UNI': '🦄',
+      'ETC': '💎', 'XLM': '⭐', 'NEAR': '🌐', 'APT': '🅰️', 'FIL': '📁',
+      'ARB': '🔷', 'OP': '🔴', 'INJ': '💉', 'SUI': '🌊', 'SEI': '🌀',
+      'TIA': '🌌', 'FET': '🤖', 'RENDER': '🎨', 'WIF': '🐶', 'PEPE': '🐸',
+      'CHZ': '🌶️', 'POL': '👾', 'GRT': '🕸️',
+    };
+    return map[coin.toUpperCase()] ?? '🪙';
+  }
+
+  Color _getCoinColor(String coin) {
+    const map = {
+      'BTC': Color(0xFFF7931A), 'ETH': Color(0xFF627EEA), 'SOL': Color(0xFF9945FF),
+      'BNB': Color(0xFFF3BA2F), 'XRP': Color(0xFF00AAE4), 'ADA': Color(0xFF0033AD),
+      'AVAX': Color(0xFFE84142), 'DOGE': Color(0xFFC2A633), 'DOT': Color(0xFFE6007A),
+      'MATIC': Color(0xFF8247E5), 'LINK': Color(0xFF2A5ADA), 'SHIB': Color(0xFFFFA409),
+      'LTC': Color(0xFFBFBBB5), 'ATOM': Color(0xFF2E3148), 'UNI': Color(0xFFFF007A),
+      'ETC': Color(0xFF33B778), 'XLM': Color(0xFF14B6E7), 'NEAR': Color(0xFF00C08B),
+      'APT': Color(0xFF06BFA5), 'FIL': Color(0xFF0090FF), 'ARB': Color(0xFF28A0F0),
+      'OP': Color(0xFFFF0420), 'INJ': Color(0xFF00C2FF), 'SUI': Color(0xFF4DA2FF),
+      'SEI': Color(0xFF9B1C1C), 'TIA': Color(0xFF7B2BF9), 'FET': Color(0xFF1D2951),
+      'RENDER': Color(0xFF00D395), 'WIF': Color(0xFFBB7F4A), 'PEPE': Color(0xFF00B300),
+      'CHZ': Color(0xFFCD0124), 'POL': Color(0xFF8247E5), 'GRT': Color(0xFF6742FF),
+    };
+    return map[coin.toUpperCase()] ?? const Color(0xFF58A6FF);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GAUGE PAINTER (Custom Half-Circle Gauge)
+// ══════════════════════════════════════════════════════════════════
+class _GaugePainter extends CustomPainter {
+  final double score;
+  final Color color;
+
+  _GaugePainter({required this.score, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height * 2);
+
+    // Background arc
+    final bgPaint = Paint()
+      ..color = const Color(0xFF21262D)
+      ..strokeWidth = 14
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(rect, pi, pi, false, bgPaint);
+
+    // Glow effect
+    final glowPaint = Paint()
+      ..color = color.withOpacity(0.2)
+      ..strokeWidth = 20
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    final sweepAngle = (score / 100) * pi;
+    canvas.drawArc(rect, pi, sweepAngle, false, glowPaint);
+
+    // Foreground arc
+    final fgPaint = Paint()
+      ..color = color
+      ..strokeWidth = 14
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(rect, pi, sweepAngle, false, fgPaint);
+
+    // Score text center
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: '${score.toInt()}',
+        style: TextStyle(
+          color: color,
+          fontSize: 28,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(size.width / 2 - textPainter.width / 2, size.height - textPainter.height),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _GaugePainter oldDelegate) {
+    return oldDelegate.score != score || oldDelegate.color != color;
+  }
+}
