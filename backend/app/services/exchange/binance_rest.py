@@ -4,9 +4,23 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-class BinanceRestClient:
+class BinanceRESTService:
     BASE_URL = "https://api.binance.com/api/v3"
     FUTURES_BASE_URL = "https://fapi.binance.com/fapi/v1"
+
+    async def get_ticker_24h(self, symbol: str) -> dict:
+        """Tek bir sembol için 24s ticker verisi."""
+        url = f"{self.BASE_URL}/ticker/24hr"
+        params = {"symbol": symbol.upper()}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params, timeout=10.0)
+                if response.status_code == 200:
+                    return response.json()
+                return {}
+            except Exception as e:
+                logger.error(f"Binance REST API error (get_ticker_24h): {e}")
+                return {}
 
     async def get_24hr_tickers(self, symbols: list[str]) -> list:
         """

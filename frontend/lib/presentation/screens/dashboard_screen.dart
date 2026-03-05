@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
+import '../providers/ai_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 import '../../config/app_config.dart';
@@ -532,43 +533,122 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   /// Page 4: AI — Yapay Zeka Piyasa Analizi
   Widget _buildAIPage(String selectedCoin) {
     final aiIndicator = ref.watch(technicalIndicatorProvider(symbol: selectedCoin, interval: _selectedInterval == '1s' ? '1m' : _selectedInterval));
+    final advancedAI = ref.watch(aiAnalysisProvider(selectedCoin));
+
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF7B2FF7), Color(0xFF00D2FF)]), borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFF58A6FF), Color(0xFF00D2FF)]),
+                    borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.psychology, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('AI Piyasa Analizi', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text('${selectedCoin.replaceAll("USDT", "")} / USDT', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('AI Piyasa Analizi', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-            Text('${selectedCoin.replaceAll("USDT", "")} / USDT', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
-          ]),
-        ]),
-        const SizedBox(height: 20),
-        Expanded(
-          child: aiIndicator.when(
-            data: (data) {
-              if (data == null) return const Center(child: Text('Veri bekleniyor...', style: TextStyle(color: Colors.white24)));
-              return SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _buildAISummaryCard(data, selectedCoin),
-                const SizedBox(height: 16),
-                _buildAISignalsCard(data),
-                const SizedBox(height: 16),
-                _buildAISRCard(data),
-              ]));
-            },
-            loading: () => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const CircularProgressIndicator(color: Color(0xFF7B2FF7)),
-              const SizedBox(height: 16),
-              Text('AI analiz ediliyor...', style: TextStyle(color: Colors.white.withOpacity(0.5))),
-            ])),
-            error: (_, __) => const Center(child: Text('AI yüklenemedi', style: TextStyle(color: Colors.red))),
+          const SizedBox(height: 20),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. Gelişmiş AI Analiz (Gemini Pro)
+                  _buildAdvancedAISection(advancedAI),
+                  const SizedBox(height: 20),
+                  
+                  // 2. Teknik Gösterge Özeti
+                  aiIndicator.when(
+                    data: (data) {
+                      if (data == null) return const Center(child: Text('Veri bekleniyor...', style: TextStyle(color: Colors.white24)));
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildAISummaryCard(data, selectedCoin),
+                          const SizedBox(height: 16),
+                          _buildAISignalsCard(data),
+                          const SizedBox(height: 16),
+                          _buildAISRCard(data),
+                        ],
+                      );
+                    },
+                    loading: () => const Center(
+                      child: Padding(padding: EdgeInsets.all(40.0), child: CircularProgressIndicator(color: Color(0xFF58A6FF))),
+                    ),
+                    error: (_, __) => const Center(child: Text('Teknik veriler yuklenemedi', style: TextStyle(color: Colors.red))),
+                  ),
+                ],
+              ),
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdvancedAISection(AsyncValue<String> advancedAI) {
+    return advancedAI.when(
+      data: (text) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1117),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF58A6FF).withOpacity(0.3)),
+          boxShadow: [
+            BoxShadow(color: const Color(0xFF58A6FF).withOpacity(0.05), blurRadius: 20, spreadRadius: 2),
+          ],
         ),
-      ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.auto_awesome, color: Color(0xFF58A6FF), size: 18),
+                SizedBox(width: 8),
+                Text('Gemini Pro Analizi', style: TextStyle(color: Color(0xFF58A6FF), fontWeight: FontWeight.bold, fontSize: 13)),
+              ],
+            ),
+            const Divider(color: Color(0xFF21262D), height: 32),
+            SelectableText(
+              text,
+              style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.6, letterSpacing: 0.1),
+            ),
+          ],
+        ),
+      ),
+      loading: () => Container(
+        height: 200,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: const Color(0xFF161B22), borderRadius: BorderRadius.circular(12)),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF)),
+            SizedBox(height: 16),
+            Text('Piyasa verileri isleniyor...', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            SizedBox(height: 4),
+            Text('Gemini AI analiz motoruna baglaniyor', style: TextStyle(color: Colors.white38, fontSize: 11)),
+          ],
+        ),
+      ),
+      error: (e, _) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+        child: Text('AI Analizi basarisiz: $e', style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+      ),
     );
   }
 

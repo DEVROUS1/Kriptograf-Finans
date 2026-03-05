@@ -11,9 +11,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # Minimum balina eşiği ($)
-WHALE_THRESHOLD = 300_000          # Normal balina
-MEGA_WHALE_THRESHOLD = 10_000_000  # Mega balina
-GIGA_WHALE_THRESHOLD = 100_000_000 # Giga balina ($100M+)
+WHALE_THRESHOLD = 50_000          # Normal balina ($50K+)
+MEGA_WHALE_THRESHOLD = 500_000    # Mega balina ($500K+)
+GIGA_WHALE_THRESHOLD = 5_000_000  # Giga balina ($5M+)
 
 # Etherscan free API (rate limit: 5 req/s)
 ETHERSCAN_API = "https://api.etherscan.io/api"
@@ -76,7 +76,7 @@ class WhaleDetectionService:
                 return []
 
     @staticmethod
-    async def get_etherscan_whale_transfers(min_value_eth: float = 1000) -> list:
+    async def get_etherscan_whale_transfers(min_value_eth: float = 15) -> list:
         """
         Etherscan'den son blokların büyük ETH transferlerini çeker.
         Ücretsiz API — API key gerekmez (düşük rate limit).
@@ -160,8 +160,8 @@ class WhaleDetectionService:
             trades = await service.get_binance_large_trades(symbol, limit=10)
             all_trades.extend(trades)
         
-        # On-chain veriler
-        onchain = await service.get_etherscan_whale_transfers(min_value_eth=100)
+        # On-chain veriler (en az 15 ETH)
+        onchain = await service.get_etherscan_whale_transfers(min_value_eth=15)
         
         # USD değerine göre sırala
         all_trades.sort(key=lambda x: x["usd_value"], reverse=True)

@@ -520,7 +520,7 @@ class _KlineConnectionStateProviderElement
   String get interval => (origin as KlineConnectionStateProvider).interval;
 }
 
-String _$klineNotifierHash() => r'3014e5386b8318423e034de4876bc3ebb2f96ad0';
+String _$klineNotifierHash() => r'ad9b6b1a28f601acf831eee3087f73f650c64381';
 
 abstract class _$KlineNotifier
     extends BuildlessAutoDisposeNotifier<KlineState> {

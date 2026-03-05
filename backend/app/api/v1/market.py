@@ -1,7 +1,8 @@
 import logging
 import math
 from fastapi import APIRouter
-from app.services.exchange.binance_rest import BinanceRestClient
+from app.services.exchange.binance_rest import BinanceRESTService
+from app.services.ai_market_service import AIMarketService
 from app.services.exchange.whale_detection import WhaleDetectionService
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ async def get_market_summary():
     """
     Returns 24hr ticker data for the top cryptocurrencies.
     """
-    rest_client = BinanceRestClient()
+    rest_client = BinanceRESTService()
     data = await rest_client.get_24hr_tickers(TOP_SYMBOLS)
     return {"status": "success", "data": data}
 
@@ -170,9 +171,19 @@ async def get_whale_trades(symbol: str = "BTCUSDT", limit: int = 30):
 async def get_whale_activity():
     """
     Tüm kaynaklardan birleşik balina aktivitesi.
-    $300K+ whale, $10M+ mega, $100M+ giga.
+    $50K+ whale, $500K+ mega, $5M+ giga.
     """
     service = WhaleDetectionService()
     data = await service.get_all_whale_activity()
     return {"status": "success", "data": data}
+
+
+@router.get("/ai-analysis")
+async def get_ai_analysis(symbol: str = "BTCUSDT"):
+    """
+    Gemini tabanlı kapsamlı piyasa analizi.
+    """
+    service = AIMarketService()
+    analysis = await service.get_market_analysis(symbol)
+    return {"status": "success", "data": analysis}
 

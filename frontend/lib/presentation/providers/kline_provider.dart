@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:dio/dio.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -106,7 +108,45 @@ class KlineNotifier extends _$KlineNotifier {
       _stateSub?.cancel();
     });
 
+    // Geçmiş verileri çek (arka planda)
+    _fetchHistory(symbol, interval);
+
     return const KlineState();
+  }
+
+  Future<void> _fetchHistory(String symbol, String interval) async {
+    try {
+      final dio = Dio();
+      final response = await dio.get(
+        'https://api.binance.com/api/v3/klines',
+        queryParameters: {
+          'symbol': symbol.toUpperCase(),
+          'interval': interval,
+          'limit': 100,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data;
+        final history = data.map((item) {
+          // Binance klines format: [OpenTime, Open, High, Low, Close, Volume, CloseTime, ...]
+          return KlineModel(
+            eventTime: item[0],
+            symbol: symbol,
+            open: item[1].toString(),
+            high: item[2].toString(),
+            low: item[3].toString(),
+            close: item[4].toString(),
+            volume: item[5].toString(),
+            isClosed: true,
+          );
+        }).toList();
+
+        state = state.copyWith(klineHistory: history);
+      }
+    } catch (e) {
+      print('Kline history fetch error: $e');
+    }
   }
 
   void _onKlineMessage(Map<String, dynamic> rawData) {

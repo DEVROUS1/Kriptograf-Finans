@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # External
     FCM_SERVER_KEY: str = ""
     TELEGRAM_BOT_TOKEN: str = ""
+    GEMINI_API_KEY: str = "your-api-key-here" # Env üzerinden set edilmeli
 
 
 @lru_cache
