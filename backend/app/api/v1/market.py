@@ -2,6 +2,7 @@ import logging
 import math
 from fastapi import APIRouter
 from app.services.exchange.binance_rest import BinanceRestClient
+from app.services.exchange.whale_detection import WhaleDetectionService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -155,3 +156,23 @@ def _pearson(x: list, y: list) -> float:
         return 0.0
     cov = sum((x[i] - mx) * (y[i] - my) for i in range(n)) / n
     return round(cov / (sx * sy), 4)
+
+
+@router.get("/whale-trades")
+async def get_whale_trades(symbol: str = "BTCUSDT", limit: int = 30):
+    """Binance'ten gerçek büyük işlem tespiti."""
+    service = WhaleDetectionService()
+    trades = await service.get_binance_large_trades(symbol, limit)
+    return {"status": "success", "data": trades}
+
+
+@router.get("/whale-activity")
+async def get_whale_activity():
+    """
+    Tüm kaynaklardan birleşik balina aktivitesi.
+    $300K+ whale, $10M+ mega, $100M+ giga.
+    """
+    service = WhaleDetectionService()
+    data = await service.get_all_whale_activity()
+    return {"status": "success", "data": data}
+

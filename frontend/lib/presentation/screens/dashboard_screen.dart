@@ -64,35 +64,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     try {
       final dio = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl));
 
-      // Fetch Funding Rates (from backend - we'll add real multi-exchange later)
-      // For now, generate realistic data from market summary
+      // 1. Gerçek balina verisi (Binance aggTrades + Etherscan)
+      try {
+        final whaleResp = await dio.get('/market/whale-activity');
+        if (whaleResp.statusCode == 200 && whaleResp.data != null) {
+          final whaleData = whaleResp.data['data'];
+          final trades = (whaleData['trades'] as List?) ?? [];
+          final stats = whaleData['stats'] ?? {};
+          
+          if (mounted) {
+            setState(() {
+              _whaleTrades.clear();
+              for (final t in trades.take(12)) {
+                final usdVal = (t['usd_value'] as num?)?.toDouble() ?? 0;
+                final level = t['level'] ?? 'WHALE';
+                
+                // $100M+ giga whale -> ses çal
+                if (level == 'GIGA' && mounted) {
+                  _audioPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'));
+                }
+                
+                _whaleTrades.add({
+                  'symbol': '${t['symbol'] ?? 'BTC'}USDT',
+                  'side': t['side'] ?? 'BUY',
+                  'amount': (usdVal / 1000).toStringAsFixed(0),
+                  'price': (t['price'] ?? 0).toString(),
+                  'exchange': t['source'] ?? 'Binance',
+                  'time': DateTime.fromMillisecondsSinceEpoch(t['timestamp'] ?? 0).toLocal().toString().substring(11, 19),
+                  'level': level,
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Whale API fallback: $e');
+      }
+
+      // 2. Market summary (fiyatlar + momentum + funding simülasyonu)
       final summaryResp = await dio.get('/market/summary');
       if (summaryResp.statusCode == 200 && summaryResp.data != null) {
         final dataList = summaryResp.data['data'] as List;
         if (mounted) {
           setState(() {
-            // Generate realistic whale trades
-            _whaleTrades.clear();
+            // Liquidation (simulated - gerçek liq API ayrıca eklenebilir)
             final rng = Random();
-            for (int i = 0; i < 8; i++) {
-              final coin = dataList[rng.nextInt(dataList.length)];
-              final isBuy = rng.nextBool();
-              final amountK = rng.nextDouble() * 15000 + 300; // MIN 300K
-              if (amountK >= 10000 && mounted) {
-                // Play sound for 10M+ trades
-                _audioPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'));
-              }
-              _whaleTrades.add({
-                'symbol': coin['symbol'] ?? 'BTCUSDT',
-                'side': isBuy ? 'BUY' : 'SELL',
-                'amount': amountK.toStringAsFixed(0),
-                'price': coin['lastPrice'] ?? '0',
-                'exchange': ['Binance', 'Bybit', 'OKX', 'Bitget', 'MEXC'][rng.nextInt(5)],
-                'time': '${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}:${DateTime.now().second.toString().padLeft(2, '0')}',
-              });
-            }
-
-            // Generate realistic liquidations
             _liquidations.clear();
             for (int i = 0; i < 6; i++) {
               final coin = dataList[rng.nextInt(dataList.length)];
@@ -102,12 +118,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 'side': isLong ? 'LONG' : 'SHORT',
                 'amount': '\$${(rng.nextDouble() * 2000 + 100).toStringAsFixed(0)}K',
                 'price': coin['lastPrice'] ?? '0',
-                'exchange': ['Binance', 'Bybit', 'OKX', 'Bitget', 'MEXC'][rng.nextInt(5)],
+                'exchange': ['Binance', 'Bybit', 'OKX', 'Bitget'][rng.nextInt(4)],
                 'timeframe': ['1h', '4h', '12h', '24h'][rng.nextInt(4)],
               });
             }
 
-            // Generate funding rates
+            // Funding rates (simulated - /funding-rate endpoint'i mevcut)
             _fundingRates.clear();
             for (final coin in dataList) {
               final rate = (rng.nextDouble() * 0.06 - 0.02);
@@ -119,17 +135,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               });
             }
 
-            // Generate momentum data
+            // Momentum data
             _momentumCoins.clear();
             for (final coin in dataList) {
               final change = double.tryParse(coin['priceChangePercent'] ?? '0') ?? 0;
               String momentum;
               Color momentumColor;
               if (change > 3) {
-                momentum = 'YÜKSEK';
+                momentum = 'YUKSEK';
                 momentumColor = const Color(0xFF00E676);
               } else if (change < -3) {
-                momentum = 'DÜŞÜK';
+                momentum = 'DUSUK';
                 momentumColor = const Color(0xFFF23645);
               } else {
                 momentum = 'NORMAL';
