@@ -6,9 +6,12 @@ part of 'market_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$marketSummaryHash() => r'b497ab97f5bd568edc9a5370eb4b937ad1a7f66f';
+String _$marketSummaryHash() => r'bbadcd0a7869d9448d6fc06e0802ee5f8c748768';
 
-/// See also [marketSummary].
+/// Auto-refreshing market summary provider.
+/// Her 5 saniyede bir otomatik güncellenir — sol panel her zaman güncel kalır.
+///
+/// Copied from [marketSummary].
 @ProviderFor(marketSummary)
 final marketSummaryProvider =
     AutoDisposeFutureProvider<List<MarketSummaryModel>>.internal(

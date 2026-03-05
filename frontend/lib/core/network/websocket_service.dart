@@ -12,11 +12,9 @@ enum WsConnectionState { connecting, connected, disconnected, error }
 
 /// WebSocket'i yöneten düşük seviyeli servis.
 ///
-/// Sorumluluk (SRP): Sadece bağlantı yönetimi ve ham mesaj akışı.
-/// İş mantığı (parse, state) üst katmanlarda (Notifier/Provider).
-///
 /// Özellikler:
-/// - Otomatik yeniden bağlanma (exponential backoff)
+/// - Otomatik yeniden bağlanma (sınırsız, exponential backoff max 30s)
+/// - Keepalive ping her 15 saniyede (Render free tier timeout'u önlemek için)
 /// - Stream broadcast: birden fazla listener destekler
 /// - dispose() ile temiz kaynak serbest bırakma
 class WebSocketService {
@@ -41,8 +39,9 @@ class WebSocketService {
   Stream<WsConnectionState> get connectionStateStream => _stateController.stream;
 
   int _retryCount = 0;
-  static const int _maxRetryCount = 10;
+  // Sınırsız yeniden deneme — asla pes etme
   static const Duration _initialBackoff = Duration(seconds: 1);
+  static const int _maxBackoffSeconds = 30;
 
   bool _isDisposed = false;
 
@@ -56,17 +55,17 @@ class WebSocketService {
       await _channel!.ready; // Bağlantı hazır olana kadar bekle
 
       _emitState(WsConnectionState.connected);
-      _retryCount = 0;
+      _retryCount = 0; // Başarılı bağlantıda sayacı sıfırla
       debugPrint('✅ WS Bağlı: $_url');
 
       _subscription = _channel!.stream.listen(
         (data) => _onMessage(data),
         onError: _onError,
         onDone: _onDone,
-        cancelOnError: false, // Hata sonrası stream'i kapatma, _onDone tetiklensin
+        cancelOnError: false,
       );
 
-      // Keepalive ping'i her 25 saniyede bir gönder
+      // Keepalive ping'i her 15 saniyede bir gönder (Render free tier timeout önleme)
       _startKeepalive();
     } catch (e) {
       debugPrint('❌ WS bağlantı hatası: $e');
@@ -78,11 +77,11 @@ class WebSocketService {
   void _onMessage(dynamic rawMessage) {
     try {
       if (rawMessage is String) {
+        if (rawMessage == 'pong') return;
         final data = json.decode(rawMessage) as Map<String, dynamic>;
 
-        // Keepalive mesajlarını filtrele — UI'ya ulaşmasın
+        // Keepalive mesajlarını filtrele
         if (data['type'] == 'keepalive') return;
-        if (rawMessage == 'pong') return;
 
         _messageController.add(data);
       }
@@ -108,27 +107,40 @@ class WebSocketService {
   void _startKeepalive() {
     _keepaliveTimer?.cancel();
     _keepaliveTimer = Timer.periodic(
-      const Duration(seconds: 25),
-      (_) => _channel?.sink.add('ping'),
+      const Duration(seconds: 15), // 25s → 15s (daha agresif keepalive)
+      (_) {
+        try {
+          _channel?.sink.add('ping');
+        } catch (_) {
+          // Sink kapalıysa sessizce geç
+        }
+      },
     );
   }
 
   void _scheduleReconnect() {
-    if (_isDisposed || _retryCount >= _maxRetryCount) {
-      debugPrint('🚫 Max retry sayısına ulaşıldı: $_url');
-      return;
-    }
+    if (_isDisposed) return;
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, ... max 60s
-    final delay = Duration(
-      seconds: (_initialBackoff.inSeconds * (1 << _retryCount)).clamp(1, 60),
-    );
+    // Exponential backoff: 1s, 2s, 4s, 8s, ... max 30s — ASLA PES ETME
+    final delaySec = (_initialBackoff.inSeconds * (1 << _retryCount.clamp(0, 5)))
+        .clamp(1, _maxBackoffSeconds);
+    final delay = Duration(seconds: delaySec);
     _retryCount++;
 
     debugPrint('🔄 $_retryCount. yeniden deneme ${delay.inSeconds}s sonra...');
 
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(delay, connect);
+    _reconnectTimer = Timer(delay, () async {
+      // Eski bağlantıyı temizle
+      await _subscription?.cancel();
+      _subscription = null;
+      try {
+        await _channel?.sink.close(ws_status.goingAway);
+      } catch (_) {}
+      _channel = null;
+      // Yeniden bağlan
+      connect();
+    });
   }
 
   void _emitState(WsConnectionState state) {
@@ -137,13 +149,15 @@ class WebSocketService {
     }
   }
 
-  /// Temiz kaynak serbest bırakma. Riverpod onDispose'da çağrılır.
+  /// Temiz kaynak serbest bırakma.
   Future<void> dispose() async {
     _isDisposed = true;
     _keepaliveTimer?.cancel();
     _reconnectTimer?.cancel();
     await _subscription?.cancel();
-    await _channel?.sink.close(ws_status.goingAway);
+    try {
+      await _channel?.sink.close(ws_status.goingAway);
+    } catch (_) {}
     await _messageController.close();
     await _stateController.close();
     debugPrint('🗑️ WebSocketService dispose edildi: $_url');

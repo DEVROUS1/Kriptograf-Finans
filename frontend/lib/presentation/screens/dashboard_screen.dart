@@ -38,6 +38,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   final List<Map<String, dynamic>> _liquidations = [];
   final List<Map<String, dynamic>> _fundingRates = [];
   final List<Map<String, dynamic>> _momentumCoins = [];
+  // Stabilized liq summary values (prevent flickering)
+  String _liq1h = '\$0M', _liq4h = '\$0M', _liq12h = '\$0M', _liq24h = '\$0M';
+  bool _isConnected = true;
 
   @override
   void initState() {
@@ -141,10 +144,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 'price': coin['lastPrice'] ?? '0',
               });
             }
+            // Stabilized liq summary values
+            final liqRng = Random();
+            _liq1h = '\$${(liqRng.nextInt(50) + 10)}M';
+            _liq4h = '\$${(liqRng.nextInt(200) + 50)}M';
+            _liq12h = '\$${(liqRng.nextInt(500) + 100)}M';
+            _liq24h = '\$${(liqRng.nextInt(1000) + 200)}M';
+            _isConnected = true;
           });
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isConnected = false);
+      }
+      debugPrint('⚠️ Veri çekme hatası: $e');
+    }
   }
 
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -171,6 +186,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       backgroundColor: const Color(0xFF0A0E17),
       body: Column(
         children: [
+          // ════════════ CONNECTION BANNER ════════════
+          if (!_isConnected)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              color: const Color(0xFFF23645).withOpacity(0.15),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFFF23645))),
+                  SizedBox(width: 8),
+                  Text('Bağlantı yeniden kuruluyor...', style: TextStyle(color: Color(0xFFF23645), fontSize: 11, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
           // ════════════ TOP BAR ════════════
           _buildTopBar(selectedCoin),
 
@@ -187,60 +217,198 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 // ────── CENTER: Main Area ──────
                 Expanded(
                   flex: 3,
-                  child: Column(
-                    children: [
-                      // Price + Indicator Header
-                      _buildPriceHeader(selectedCoin, indicatorAsync),
-
-                      // Live Price Widget
-                      Expanded(
-                        flex: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  const Color(0xFF1A1F2E).withOpacity(0.9),
-                                  const Color(0xFF0F1318).withOpacity(0.9),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: const Color(0xFF2A2E39).withOpacity(0.5),
-                              ),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: LivePriceWidget(
-                                symbol: selectedCoin.toLowerCase(),
-                                interval: _selectedInterval,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Bottom Tabs: Whale Trades | Liquidations | Funding | Momentum
-                      Expanded(
-                        flex: 3,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: _buildBottomTabs(),
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: _buildPageContent(selectedCoin, indicatorAsync),
                 ),
 
                 // ────── RIGHT: Technical Gauge + Liquidation Summary ──────
-                if (screenWidth > 900)
+                if (screenWidth > 900 && _currentPage == 0)
                   _buildRightPanel(selectedCoin, indicatorAsync),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Page content switcher based on sidebar navigation
+  Widget _buildPageContent(String selectedCoin, AsyncValue<TechnicalIndicatorModel?> indicatorAsync) {
+    switch (_currentPage) {
+      case 0:
+        return _buildDashboardPage(selectedCoin, indicatorAsync);
+      case 1:
+        return _buildMarketsPage();
+      case 2:
+        return _buildDerivativesPage();
+      case 3:
+        return _buildAlarmsPage();
+      default:
+        return _buildDashboardPage(selectedCoin, indicatorAsync);
+    }
+  }
+
+  /// Page 0: Main Dashboard
+  Widget _buildDashboardPage(String selectedCoin, AsyncValue<TechnicalIndicatorModel?> indicatorAsync) {
+    return Column(
+      children: [
+        _buildPriceHeader(selectedCoin, indicatorAsync),
+        Expanded(
+          flex: 2,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF1A1F2E).withOpacity(0.9),
+                    const Color(0xFF0F1318).withOpacity(0.9),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF2A2E39).withOpacity(0.5)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: LivePriceWidget(symbol: selectedCoin.toLowerCase(), interval: _selectedInterval),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          flex: 3,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: _buildBottomTabs(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Page 1: Markets — Tüm coinlerin detaylı tablo görünümü
+  Widget _buildMarketsPage() {
+    final marketSummaryAsync = ref.watch(marketSummaryProvider);
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text('📈 Piyasalar — Tüm Coinler', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+          // Table header row
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              border: Border.all(color: const Color(0xFF21262D)),
+            ),
+            child: const Row(
+              children: [
+                Expanded(flex: 2, child: Text('COIN', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11, fontWeight: FontWeight.w700))),
+                Expanded(flex: 2, child: Text('FİYAT', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11, fontWeight: FontWeight.w700), textAlign: TextAlign.right)),
+                Expanded(flex: 1, child: Text('24H %', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11, fontWeight: FontWeight.w700), textAlign: TextAlign.right)),
+                Expanded(flex: 2, child: Text('HACİM', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11, fontWeight: FontWeight.w700), textAlign: TextAlign.right)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: marketSummaryAsync.when(
+              data: (coins) => ListView.builder(
+                itemCount: coins.length,
+                itemBuilder: (context, i) {
+                  final coin = coins[i];
+                  final change = double.tryParse(coin.priceChangePercent) ?? 0;
+                  final isPos = change >= 0;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: const Color(0xFF21262D).withOpacity(0.5)))),
+                    child: Row(
+                      children: [
+                        Expanded(flex: 2, child: Row(children: [
+                          Text(getCoinEmoji(coin.symbol.replaceAll('USDT', '')), style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 8),
+                          Text(coin.symbol.replaceAll('USDT', ''), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                          Text('/USDT', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
+                        ])),
+                        Expanded(flex: 2, child: Text(_formatPrice(coin.lastPrice), style: const TextStyle(color: Colors.white, fontSize: 13), textAlign: TextAlign.right)),
+                        Expanded(flex: 1, child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: (isPos ? const Color(0xFF089981) : const Color(0xFFF23645)).withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                          child: Text('${isPos ? "+" : ""}${change.toStringAsFixed(2)}%', style: TextStyle(color: isPos ? const Color(0xFF00E676) : const Color(0xFFF23645), fontSize: 11, fontWeight: FontWeight.w600), textAlign: TextAlign.right),
+                        )),
+                        Expanded(flex: 2, child: Text(coin.volume ?? '-', style: const TextStyle(color: Color(0xFF8B949E), fontSize: 11), textAlign: TextAlign.right)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF))),
+              error: (e, _) => Center(child: Text('Hata: $e', style: const TextStyle(color: Colors.red))),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Page 2: Derivatives — Likidasyon + Fonlama paneli
+  Widget _buildDerivativesPage() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('⚡ Türev Piyasalar', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Expanded(child: _buildBottomTabs()),
+        ],
+      ),
+    );
+  }
+
+  /// Page 3: Alarms — Kurulmuş alarmlar
+  Widget _buildAlarmsPage() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🔔 Alarmlarım', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: () => _showAlarmDialog(context),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Yeni Alarm'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1F6FEB),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.notifications_none, size: 64, color: const Color(0xFF8B949E).withOpacity(0.3)),
+                  const SizedBox(height: 16),
+                  Text('Henüz alarm kurulmadı', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Yukarıdaki butona tıklayarak yeni bir alarm kurabilirsiniz.', style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 12)),
+                ],
+              ),
             ),
           ),
         ],
@@ -852,10 +1020,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildLiqTimeframe('1H', '\$${(Random().nextInt(50) + 10)}M'),
-              _buildLiqTimeframe('4H', '\$${(Random().nextInt(200) + 50)}M'),
-              _buildLiqTimeframe('12H', '\$${(Random().nextInt(500) + 100)}M'),
-              _buildLiqTimeframe('24H', '\$${(Random().nextInt(1000) + 200)}M'),
+              _buildLiqTimeframe('1H', _liq1h),
+              _buildLiqTimeframe('4H', _liq4h),
+              _buildLiqTimeframe('12H', _liq12h),
+              _buildLiqTimeframe('24H', _liq24h),
             ],
           ),
         ),
