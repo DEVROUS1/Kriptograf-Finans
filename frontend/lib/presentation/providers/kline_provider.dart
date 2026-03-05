@@ -128,11 +128,13 @@ class KlineNotifier extends _$KlineNotifier {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data;
-        final history = data.map((item) {
+        final history = data.map<KlineModel>((item) {
           // Binance klines format: [OpenTime, Open, High, Low, Close, Volume, CloseTime, ...]
           return KlineModel(
             eventTime: item[0],
+            openTime: item[0],
             symbol: symbol,
+            interval: interval,
             open: item[1].toString(),
             high: item[2].toString(),
             low: item[3].toString(),
