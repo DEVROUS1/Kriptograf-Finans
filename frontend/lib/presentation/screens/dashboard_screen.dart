@@ -29,7 +29,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with TickerProviderStateMixin {
   late TabController _bottomTabController;
   Timer? _refreshTimer;
-  int _currentPage = 0; // 0=Dashboard, 1=Markets, 2=Derivatives, 3=Alarms
+  int _currentPage = 0; // 0=Dashboard, 1=Markets, 2=Derivatives, 3=Tools, 4=AI, 5=Alarms
   String _selectedInterval = '1s';
   Timer? _indicatorTimer;
 
@@ -241,6 +241,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       case 2:
         return _buildDerivativesPage();
       case 3:
+        return _buildToolsPage(selectedCoin);
+      case 4:
+        return _buildAIPage(selectedCoin);
+      case 5:
         return _buildAlarmsPage();
       default:
         return _buildDashboardPage(selectedCoin, indicatorAsync);
@@ -372,7 +376,300 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  /// Page 3: Alarms — Kurulmuş alarmlar
+  /// Page 3: Tools — Hesaplayıcılar ve Analiz Araçları
+  Widget _buildToolsPage(String selectedCoin) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Trader Araçları', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text('Pozisyon büyüklüğü, risk yönetimi ve istatistik', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+            const SizedBox(height: 20),
+            _buildToolCard(
+              icon: Icons.calculate_rounded,
+              title: 'Pozisyon Hesaplayıcı',
+              subtitle: 'Likidasyon fiyatı, risk/ödül, Kelly Criterion',
+              color: const Color(0xFF58A6FF),
+              child: _buildPositionCalculator(),
+            ),
+            const SizedBox(height: 16),
+            _buildToolCard(
+              icon: Icons.auto_graph,
+              title: 'Risk Metrikleri',
+              subtitle: 'Kelly Criterion, Expected Value formülleri',
+              color: const Color(0xFF00E676),
+              child: _buildRiskMetricsInfo(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolCard({required IconData icon, required String title, required String subtitle, required Color color, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+              Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
+            ]),
+          ]),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPositionCalculator() {
+    return FutureBuilder(
+      future: Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)).get('/market/calculator', queryParameters: {
+        'capital': 1000, 'leverage': 10, 'entry_price': 50000, 'stop_loss_pct': 2.0, 'take_profit_pct': 6.0, 'win_rate': 55,
+      }),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF))));
+        final data = snapshot.data?.data?['data'];
+        if (data == null) return const Text('Veri yok', style: TextStyle(color: Colors.white24));
+        return Column(children: [
+          Row(children: [
+            Expanded(child: _calcCard('Pozisyon', '\$${data['position_size']}', const Color(0xFF58A6FF))),
+            const SizedBox(width: 8),
+            Expanded(child: _calcCard('Liq Long', '\$${data['liquidation_long']}', const Color(0xFFF23645))),
+            const SizedBox(width: 8),
+            Expanded(child: _calcCard('Liq Short', '\$${data['liquidation_short']}', const Color(0xFF00E676))),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _calcCard('Risk', '\$${data['risk_amount']}', const Color(0xFFF23645))),
+            const SizedBox(width: 8),
+            Expanded(child: _calcCard('Ödül', '\$${data['reward_amount']}', const Color(0xFF00E676))),
+            const SizedBox(width: 8),
+            Expanded(child: _calcCard('R:R', '${data['risk_reward_ratio']}x', const Color(0xFFFF9800))),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _calcCard('Kelly', '${data['kelly_fraction']}%', const Color(0xFF7B2FF7))),
+            const SizedBox(width: 8),
+            Expanded(child: _calcCard('Kelly Bahis', '\$${data['kelly_bet']}', const Color(0xFF7B2FF7))),
+            const SizedBox(width: 8),
+            Expanded(child: _calcCard('EV', '\$${data['expected_value']}', (data['expected_value'] as num) > 0 ? const Color(0xFF00E676) : const Color(0xFFF23645))),
+          ]),
+        ]);
+      },
+    );
+  }
+
+  Widget _calcCard(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      decoration: BoxDecoration(color: color.withOpacity(0.06), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.15))),
+      child: Column(children: [
+        Text(label, style: TextStyle(color: color.withOpacity(0.7), fontSize: 10, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+      ]),
+    );
+  }
+
+  Widget _buildRiskMetricsInfo() {
+    return Column(children: [
+      _riskInfoRow('Kelly Criterion', 'f* = (bp - q) / b — optimal pozisyon büyüklüğü', Icons.functions),
+      _riskInfoRow('Expected Value', 'Her trade\'in ortalama beklenen kâr/zarar', Icons.trending_up),
+      _riskInfoRow('Risk/Reward', 'Stop-loss vs take-profit oranı', Icons.compare_arrows),
+      _riskInfoRow('Likidasyon Fiyatı', 'Pozisyonun zorla kapatılacağı seviye', Icons.warning_amber),
+    ]);
+  }
+
+  Widget _riskInfoRow(String title, String desc, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(children: [
+        Icon(icon, size: 16, color: const Color(0xFF00E676)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(desc, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10)),
+        ])),
+      ]),
+    );
+  }
+
+  /// Page 4: AI — Yapay Zeka Piyasa Analizi
+  Widget _buildAIPage(String selectedCoin) {
+    final aiIndicator = ref.watch(technicalIndicatorProvider(symbol: selectedCoin, interval: _selectedInterval == '1s' ? '1m' : _selectedInterval));
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF7B2FF7), Color(0xFF00D2FF)]), borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('AI Piyasa Analizi', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+            Text('${selectedCoin.replaceAll("USDT", "")} / USDT', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+          ]),
+        ]),
+        const SizedBox(height: 20),
+        Expanded(
+          child: aiIndicator.when(
+            data: (data) {
+              if (data == null) return const Center(child: Text('Veri bekleniyor...', style: TextStyle(color: Colors.white24)));
+              return SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _buildAISummaryCard(data, selectedCoin),
+                const SizedBox(height: 16),
+                _buildAISignalsCard(data),
+                const SizedBox(height: 16),
+                _buildAISRCard(data),
+              ]));
+            },
+            loading: () => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const CircularProgressIndicator(color: Color(0xFF7B2FF7)),
+              const SizedBox(height: 16),
+              Text('AI analiz ediliyor...', style: TextStyle(color: Colors.white.withOpacity(0.5))),
+            ])),
+            error: (_, __) => const Center(child: Text('AI yüklenemedi', style: TextStyle(color: Colors.red))),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildAISummaryCard(TechnicalIndicatorModel data, String coin) {
+    final coinName = coin.replaceAll('USDT', '');
+    final score = data.score;
+    final action = data.action;
+    final rsi = data.indicators.rsi;
+    final macd = data.indicators.macdHist;
+    String summary; Color sColor;
+    if (action == 'Buy') {
+      summary = '$coinName icin teknik gostergeler ALIM sinyali veriyor (Skor: $score/100). ';
+      if (rsi != null && rsi < 30) summary += 'RSI asiri satim bolgesinde (${rsi.toStringAsFixed(1)}). ';
+      if (macd != null && macd > 0) summary += 'MACD histogram pozitif, momentum yukari yonlu.';
+      sColor = const Color(0xFF00E676);
+    } else if (action == 'Sell') {
+      summary = '$coinName icin teknik gostergeler SATIM sinyali veriyor (Skor: $score/100). ';
+      if (rsi != null && rsi > 70) summary += 'RSI asiri alim bolgesinde (${rsi.toStringAsFixed(1)}). ';
+      if (macd != null && macd < 0) summary += 'MACD histogram negatif, momentum asagi yonlu.';
+      sColor = const Color(0xFFF23645);
+    } else {
+      summary = '$coinName piyasada NOTR bolgede (Skor: $score/100). Belirgin yon yok.';
+      sColor = Colors.orange;
+    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [sColor.withOpacity(0.08), Colors.transparent]),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: sColor.withOpacity(0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(action == 'Buy' ? Icons.trending_up : action == 'Sell' ? Icons.trending_down : Icons.trending_flat, color: sColor, size: 24),
+          const SizedBox(width: 8),
+          Text('AI Yorum', style: TextStyle(color: sColor, fontSize: 14, fontWeight: FontWeight.bold)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: sColor.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+            child: Text(action == 'Buy' ? 'ALIS' : action == 'Sell' ? 'SATIS' : 'NOTR', style: TextStyle(color: sColor, fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Text(summary, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+        const SizedBox(height: 8),
+        Text('Bu bir finansal tavsiye degildir.', style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 10, fontStyle: FontStyle.italic)),
+      ]),
+    );
+  }
+
+  Widget _buildAISignalsCard(TechnicalIndicatorModel data) {
+    final ind = data.indicators;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: const Color(0xFF0D1117), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21262D))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Sinyal Paneli', style: TextStyle(color: Color(0xFF58A6FF), fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        _aiSignalRow('RSI (14)', ind.rsi, ind.rsi != null ? (ind.rsi! < 30 ? 'Asiri Satim' : ind.rsi! > 70 ? 'Asiri Alim' : 'Notr') : '-'),
+        _aiSignalRow('MACD Hist', ind.macdHist, ind.macdHist != null ? (ind.macdHist! > 0 ? 'Yukari' : 'Asagi') : '-'),
+        _aiSignalRow('ADX', ind.adx, ind.adx != null ? (ind.adx! > 25 ? 'Guclu Trend' : 'Zayif Trend') : '-'),
+        _aiSignalRow('BB Width', ind.bbWidth, ind.bbWidth != null ? (ind.bbWidth! > 0.05 ? 'Volatil' : 'Dar Band') : '-'),
+      ]),
+    );
+  }
+
+  Widget _aiSignalRow(String name, double? value, String signal) {
+    Color c = signal.contains('Sat') || signal.contains('Asagi') ? const Color(0xFFF23645) : signal.contains('Al') || signal.contains('Yuk') || signal.contains('Guc') ? const Color(0xFF00E676) : Colors.orange;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(children: [
+        Expanded(flex: 2, child: Text(name, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 12))),
+        Expanded(flex: 1, child: Text(value?.toStringAsFixed(2) ?? '-', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600))),
+        Expanded(flex: 2, child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+          child: Text(signal, style: TextStyle(color: c, fontSize: 10, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+        )),
+      ]),
+    );
+  }
+
+  Widget _buildAISRCard(TechnicalIndicatorModel data) {
+    final sr = data.supportResistance;
+    if (sr == null) return const SizedBox();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: const Color(0xFF0D1117), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21262D))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Destek & Direnc', style: TextStyle(color: Color(0xFFFFD700), fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        if (sr.r3 != null) _srLevelRow('R3', sr.r3!, const Color(0xFFB71C1C)),
+        if (sr.r2 != null) _srLevelRow('R2', sr.r2!, const Color(0xFFD32F2F)),
+        if (sr.r1 != null) _srLevelRow('R1', sr.r1!, const Color(0xFFF23645)),
+        if (sr.pivot != null) _srLevelRow('Pivot', sr.pivot!, const Color(0xFFFFD700)),
+        if (sr.s1 != null) _srLevelRow('S1', sr.s1!, const Color(0xFF00E676)),
+        if (sr.s2 != null) _srLevelRow('S2', sr.s2!, const Color(0xFF00C853)),
+        if (sr.s3 != null) _srLevelRow('S3', sr.s3!, const Color(0xFF00897B)),
+      ]),
+    );
+  }
+
+  Widget _srLevelRow(String label, double value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 8),
+        Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+        const Spacer(),
+        Text('\$${value.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+      ]),
+    );
+  }
+
+  /// Page 5: Alarms — Kurulmuş alarmlar
   Widget _buildAlarmsPage() {
     return Padding(
       padding: const EdgeInsets.all(12),
@@ -546,46 +843,76 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // ══════════════════════════════════════════════════════════════════
   Widget _buildNavSidebar() {
     final navItems = [
-      {'icon': Icons.dashboard, 'label': '📊 Panel', 'index': 0},
-      {'icon': Icons.candlestick_chart, 'label': '📈 Piyasalar', 'index': 1},
-      {'icon': Icons.bolt, 'label': '⚡ Türevler', 'index': 2},
-      {'icon': Icons.notifications, 'label': '🔔 Alarmlar', 'index': 3},
+      {'icon': Icons.dashboard_rounded, 'label': 'Panel', 'index': 0},
+      {'icon': Icons.candlestick_chart_rounded, 'label': 'Piyasalar', 'index': 1},
+      {'icon': Icons.bolt_rounded, 'label': 'Türevler', 'index': 2},
+      {'icon': Icons.calculate_rounded, 'label': 'Araçlar', 'index': 3},
+      {'icon': Icons.auto_awesome, 'label': 'AI', 'index': 4},
+      {'icon': Icons.notifications_rounded, 'label': 'Alarmlar', 'index': 5},
     ];
     return Container(
-      width: 80,
+      width: 72,
       decoration: BoxDecoration(
-        color: const Color(0xFF080B12),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF0A0E17), Color(0xFF060912)],
+        ),
         border: Border(right: BorderSide(color: const Color(0xFF21262D).withOpacity(0.5))),
       ),
       child: Column(
         children: [
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ...navItems.map((item) {
             final isActive = _currentPage == (item['index'] as int);
-            return InkWell(
-              onTap: () => setState(() => _currentPage = item['index'] as int),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 6),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: isActive ? const Color(0xFF1F6FEB).withOpacity(0.15) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: isActive ? Border.all(color: const Color(0xFF1F6FEB).withOpacity(0.3)) : null,
-                ),
-                child: Column(
-                  children: [
-                    Icon(item['icon'] as IconData, size: 18, color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
-                    const SizedBox(height: 3),
-                    Text(
-                      (item['label'] as String).replaceAll(RegExp(r'^[^\s]+\s'), ''),
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E)),
-                      textAlign: TextAlign.center,
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => setState(() => _currentPage = item['index'] as int),
+                  borderRadius: BorderRadius.circular(10),
+                  hoverColor: const Color(0xFF1F6FEB).withOpacity(0.08),
+                  splashColor: const Color(0xFF1F6FEB).withOpacity(0.15),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isActive ? const Color(0xFF1F6FEB).withOpacity(0.15) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: isActive ? Border.all(color: const Color(0xFF1F6FEB).withOpacity(0.4), width: 1) : null,
                     ),
-                  ],
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          item['icon'] as IconData,
+                          size: 20,
+                          color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          item['label'] as String,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                            color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             );
           }),
+          const Spacer(),
+          // Version badge at bottom
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('v2.0', style: TextStyle(color: Colors.white.withOpacity(0.15), fontSize: 9)),
+          ),
         ],
       ),
     );

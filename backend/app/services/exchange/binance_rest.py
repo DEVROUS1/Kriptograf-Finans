@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 class BinanceRestClient:
     BASE_URL = "https://api.binance.com/api/v3"
+    FUTURES_BASE_URL = "https://fapi.binance.com/fapi/v1"
 
     async def get_24hr_tickers(self, symbols: list[str]) -> list:
         """
@@ -33,4 +34,56 @@ class BinanceRestClient:
                 return response.json()
             except Exception as e:
                 logger.error(f"Binance REST API error (get_historical_klines): {e}")
+                return []
+
+    async def get_open_interest(self, symbol: str) -> dict:
+        """Vadeli işlem açık pozisyon miktarı"""
+        url = f"{self.FUTURES_BASE_URL}/openInterest"
+        params = {"symbol": symbol.upper()}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params, timeout=10.0)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Binance Futures API error (openInterest): {e}")
+                return {}
+
+    async def get_long_short_ratio(self, symbol: str, period: str = "5m") -> list:
+        """Global Long/Short oranı"""
+        url = f"{self.FUTURES_BASE_URL}/globalLongShortAccountRatio"
+        params = {"symbol": symbol.upper(), "period": period, "limit": 30}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params, timeout=10.0)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Binance Futures API error (longShortRatio): {e}")
+                return []
+
+    async def get_funding_rate(self, symbol: str) -> list:
+        """Fonlama oranı geçmişi"""
+        url = f"{self.FUTURES_BASE_URL}/fundingRate"
+        params = {"symbol": symbol.upper(), "limit": 10}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params, timeout=10.0)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Binance Futures API error (fundingRate): {e}")
+                return []
+
+    async def get_top_long_short_position_ratio(self, symbol: str, period: str = "5m") -> list:
+        """Top Trader pozisyon oranı"""
+        url = f"{self.FUTURES_BASE_URL}/topLongShortPositionRatio"
+        params = {"symbol": symbol.upper(), "period": period, "limit": 30}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params, timeout=10.0)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Binance Futures API error (topLSRatio): {e}")
                 return []
