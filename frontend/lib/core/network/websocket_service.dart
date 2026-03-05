@@ -56,7 +56,7 @@ class WebSocketService {
 
       _emitState(WsConnectionState.connected);
       _retryCount = 0; // Başarılı bağlantıda sayacı sıfırla
-      debugPrint('✅ WS Bağlı: $_url');
+      debugPrint('WS Bagli: $_url');
 
       _subscription = _channel!.stream.listen(
         (data) => _onMessage(data),
@@ -68,7 +68,7 @@ class WebSocketService {
       // Keepalive ping'i her 15 saniyede bir gönder (Render free tier timeout önleme)
       _startKeepalive();
     } catch (e) {
-      debugPrint('❌ WS bağlantı hatası: $e');
+      debugPrint('WS baglanti hatasi: $e');
       _emitState(WsConnectionState.error);
       _scheduleReconnect();
     }
@@ -86,18 +86,18 @@ class WebSocketService {
         _messageController.add(data);
       }
     } catch (e) {
-      debugPrint('⚠️ WS mesaj parse hatası: $e');
+      debugPrint('WS mesaj parse hatasi: $e');
     }
   }
 
   void _onError(Object error) {
-    debugPrint('❌ WS stream hatası: $error');
+    debugPrint('WS stream hatasi: $error');
     _emitState(WsConnectionState.error);
   }
 
   void _onDone() {
     if (_isDisposed) return;
-    debugPrint('🔌 WS bağlantısı kapandı. Yeniden bağlanılıyor...');
+    debugPrint('WS baglantisi kapandi. Yeniden baglaniliyor...');
     _emitState(WsConnectionState.disconnected);
     _scheduleReconnect();
   }

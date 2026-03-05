@@ -174,7 +174,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       if (mounted) {
         setState(() => _isConnected = false);
       }
-      debugPrint('⚠️ Veri çekme hatası: $e');
+      debugPrint('Veri cekme hatasi: $e');
     }
   }
 
@@ -318,7 +318,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         children: [
           const Padding(
             padding: EdgeInsets.only(bottom: 12),
-            child: Text('📈 Piyasalar — Tüm Coinler', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            child: Text('Piyasalar', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
           ),
           // Table header row
           Container(
@@ -384,7 +384,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('⚡ Türev Piyasalar', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('Turev Piyasalar', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Expanded(child: _buildBottomTabs()),
         ],
@@ -694,7 +694,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         children: [
           Row(
             children: [
-              const Text('🔔 Alarmlarım', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text('Alarmlarim', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: () => _showAlarmDialog(context),
@@ -961,7 +961,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 const Icon(Icons.trending_up, color: Color(0xFF58A6FF), size: 18),
                 const SizedBox(width: 8),
                 const Text(
-                  '📊 ',
+                  '',
                   style: TextStyle(fontSize: 14),
                 ),
                 const Text(
@@ -1253,10 +1253,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
               unselectedLabelStyle: const TextStyle(fontSize: 11),
               tabs: const [
-                Tab(text: '🐳 BALİNA'),
-                Tab(text: '💥 LİKİDASYON'),
-                Tab(text: '💰 FONLAMA'),
-                Tab(text: '🚀 MOMENTUM'),
+                Tab(text: 'BALINA'),
+                Tab(text: 'LIKIDASYON'),
+                Tab(text: 'FONLAMA'),
+                Tab(text: 'MOMENTUM'),
               ],
             ),
           ),
@@ -1328,7 +1328,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ),
               const Spacer(),
               if (double.parse(trade['amount'].toString()) >= 10000)
-                const Text('🔥 ', style: TextStyle(fontSize: 16)),
+                const Text('', style: TextStyle(fontSize: 16)),
               Text(
                 '\$${trade['amount']}K',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
@@ -1556,7 +1556,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             ),
             child: const Row(
               children: [
-                Text('🧠 ', style: TextStyle(fontSize: 14)),
+                Text('', style: TextStyle(fontSize: 14)),
                 Icon(Icons.analytics, color: Color(0xFFF778BA), size: 18),
                 SizedBox(width: 6),
                 Text(
@@ -1644,7 +1644,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       child: ListView(
         padding: const EdgeInsets.only(top: 4),
         children: [
-          _sectionLabel('📊 MOMENTUM'),
+          _sectionLabel('MOMENTUM'),
           _indicatorRow('RSI (14)', ind.rsi?.toStringAsFixed(2) ?? '-', _getRsiColor(ind.rsi)),
           _indicatorRow('STOCH RSI', ind.stochRsi?.toStringAsFixed(2) ?? '-', _getRsiColor(ind.stochRsi)),
           _indicatorRow('STOCH K/D', '${ind.stochK?.toStringAsFixed(1) ?? "-"}/${ind.stochD?.toStringAsFixed(1) ?? "-"}', null),
@@ -1655,7 +1655,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           _indicatorRow('AWESOME OSC', ind.awesomeOsc?.toStringAsFixed(2) ?? '-', null),
 
           const SizedBox(height: 8),
-          _sectionLabel('📈 TREND'),
+          _sectionLabel('TREND'),
           _indicatorRow('MACD', ind.macd?.toStringAsFixed(4) ?? '-', null),
           _indicatorRow('MACD SİNYAL', ind.macdSignal?.toStringAsFixed(4) ?? '-', null),
           _indicatorRow('MACD HİST', ind.macdHist?.toStringAsFixed(4) ?? '-', _getHistColor(ind.macdHist)),
@@ -1664,7 +1664,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           _indicatorRow('ICHIMOKU T/K', '${ind.tenkan?.toStringAsFixed(2) ?? "-"} / ${ind.kijun?.toStringAsFixed(2) ?? "-"}', null),
 
           const SizedBox(height: 8),
-          _sectionLabel('📉 HAREKETLİ ORTALAMALAR'),
+          _sectionLabel('HAREKETLI ORTALAMALAR'),
           _indicatorRow('EMA 9', ind.ema9?.toStringAsFixed(2) ?? '-', null),
           _indicatorRow('EMA 20', ind.ema20?.toStringAsFixed(2) ?? '-', null),
           _indicatorRow('EMA 50', ind.ema50?.toStringAsFixed(2) ?? '-', null),
@@ -1673,7 +1673,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           _indicatorRow('SMA 50', ind.sma50?.toStringAsFixed(2) ?? '-', null),
 
           const SizedBox(height: 8),
-          _sectionLabel('🌊 VOLATİLİTE'),
+          _sectionLabel('VOLATILITE'),
           _indicatorRow('BB ÜST', ind.bbUpper?.toStringAsFixed(2) ?? '-', null),
           _indicatorRow('BB ORTA', ind.bbMiddle?.toStringAsFixed(2) ?? '-', null),
           _indicatorRow('BB ALT', ind.bbLower?.toStringAsFixed(2) ?? '-', null),
@@ -1681,23 +1681,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           _indicatorRow('ATR (14)', ind.atr?.toStringAsFixed(4) ?? '-', null),
 
           const SizedBox(height: 8),
-          _sectionLabel('📊 HACİM'),
+          _sectionLabel('HACIM'),
           _indicatorRow('OBV', ind.obv != null ? _fmtLargeNum(ind.obv!) : '-', null),
           _indicatorRow('VWAP', ind.vwap?.toStringAsFixed(2) ?? '-', null),
 
           if (sr != null) ...[
             const SizedBox(height: 8),
-            _sectionLabel('🎯 DESTEK / DİRENÇ'),
+            _sectionLabel('DESTEK / DIRENC'),
             _indicatorRow('PİVOT', sr.pivot?.toStringAsFixed(2) ?? '-', const Color(0xFFFFD700)),
-            _indicatorRow('🟢 D1', sr.s1?.toStringAsFixed(2) ?? '-', const Color(0xFF00E676)),
-            _indicatorRow('🟢 D2', sr.s2?.toStringAsFixed(2) ?? '-', const Color(0xFF00C853)),
-            _indicatorRow('🟢 D3', sr.s3?.toStringAsFixed(2) ?? '-', const Color(0xFF00897B)),
-            _indicatorRow('🔴 R1', sr.r1?.toStringAsFixed(2) ?? '-', const Color(0xFFF23645)),
-            _indicatorRow('🔴 R2', sr.r2?.toStringAsFixed(2) ?? '-', const Color(0xFFD32F2F)),
-            _indicatorRow('🔴 R3', sr.r3?.toStringAsFixed(2) ?? '-', const Color(0xFFB71C1C)),
+            _indicatorRow('D1', sr.s1?.toStringAsFixed(2) ?? '-', const Color(0xFF00E676)),
+            _indicatorRow('D2', sr.s2?.toStringAsFixed(2) ?? '-', const Color(0xFF00C853)),
+            _indicatorRow('D3', sr.s3?.toStringAsFixed(2) ?? '-', const Color(0xFF00897B)),
+            _indicatorRow('R1', sr.r1?.toStringAsFixed(2) ?? '-', const Color(0xFFF23645)),
+            _indicatorRow('R2', sr.r2?.toStringAsFixed(2) ?? '-', const Color(0xFFD32F2F)),
+            _indicatorRow('R3', sr.r3?.toStringAsFixed(2) ?? '-', const Color(0xFFB71C1C)),
           ],
           const SizedBox(height: 16),
-          _indicatorRow('💰 FİYAT', '\$${ind.price?.toStringAsFixed(2) ?? "-"}', Colors.white),
+          _indicatorRow('FIYAT', '\$${ind.price?.toStringAsFixed(2) ?? "-"}', Colors.white),
         ],
       ),
     );
@@ -1775,7 +1775,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           children: [
             Icon(Icons.notifications_active, color: Color(0xFFFF9800)),
             SizedBox(width: 8),
-            Text('🔔 Alarm Kur', style: TextStyle(color: Colors.white)),
+            Text('Alarm Kur', style: TextStyle(color: Colors.white)),
           ],
         ),
         content: SizedBox(
@@ -1783,13 +1783,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildAlarmField('🪙 Koin', 'BTCUSDT'),
+              _buildAlarmField('Koin', 'BTCUSDT'),
               const SizedBox(height: 12),
-              _buildAlarmField('💵 Fiyat Alarmı', 'Örn: 70000'),
+              _buildAlarmField('Fiyat Alarmi', 'Orn: 70000'),
               const SizedBox(height: 12),
-              _buildAlarmField('📊 RSI Alarmı', 'Örn: 30 altı'),
+              _buildAlarmField('RSI Alarmi', 'Orn: 30 alti'),
               const SizedBox(height: 12),
-              _buildAlarmField('📈 Hacim Alarmı', 'Örn: 1000 BTC üzeri'),
+              _buildAlarmField('Hacim Alarmi', 'Orn: 1000 BTC uzeri'),
             ],
           ),
         ),
@@ -1807,7 +1807,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: const Text('✅ Alarm başarıyla kuruldu!'),
+                  content: const Text('Alarm basariyla kuruldu!'),
                   backgroundColor: const Color(0xFF238636),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1861,15 +1861,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   String getCoinEmoji(String coin) {
     const map = {
-      'BTC': '₿', 'ETH': 'Ξ', 'BNB': '🔶', 'SOL': '☀️', 'XRP': '💧',
-      'ADA': '🔵', 'DOGE': '🐕', 'AVAX': '🔺', 'DOT': '⚫', 'MATIC': '🟣',
-      'LINK': '🔗', 'SHIB': '🐕', 'LTC': '🪙', 'ATOM': '⚛️', 'UNI': '🦄',
-      'ETC': '💎', 'XLM': '⭐', 'NEAR': '🌐', 'APT': '🅰️', 'FIL': '📁',
-      'ARB': '🔷', 'OP': '🔴', 'INJ': '💉', 'SUI': '🌊', 'SEI': '🌀',
-      'TIA': '🌌', 'FET': '🤖', 'RENDER': '🎨', 'WIF': '🐶', 'PEPE': '🐸',
-      'CHZ': '🌶️', 'POL': '👾', 'GRT': '🕸️',
+      'BTC': 'B', 'ETH': 'E', 'BNB': 'B', 'SOL': 'S', 'XRP': 'X',
+      'ADA': 'A', 'DOGE': 'D', 'AVAX': 'A', 'DOT': 'D', 'MATIC': 'M',
+      'LINK': 'L', 'SHIB': 'S', 'LTC': 'L', 'ATOM': 'A', 'UNI': 'U',
+      'ETC': 'E', 'XLM': 'X', 'NEAR': 'N', 'APT': 'A', 'FIL': 'F',
+      'ARB': 'A', 'OP': 'O', 'INJ': 'I', 'SUI': 'S', 'SEI': 'S',
+      'TIA': 'T', 'FET': 'F', 'RENDER': 'R', 'WIF': 'W', 'PEPE': 'P',
+      'CHZ': 'C', 'POL': 'P', 'GRT': 'G',
     };
-    return map[coin.toUpperCase()] ?? '🪙';
+    return map[coin.toUpperCase()] ?? coin.substring(0, 1).toUpperCase();
   }
 
   Color _getCoinColor(String coin) {

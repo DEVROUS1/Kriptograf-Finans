@@ -59,16 +59,68 @@ class LivePriceWidget extends ConsumerWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _OhlcItem(label: '📈 AÇILIŞ', value: _fmt(kline.open), color: Colors.white70),
-                  _OhlcItem(label: '🔺 EN YÜKSEK', value: _fmt(kline.high), color: const Color(0xFF00E676)),
-                  _OhlcItem(label: '🔻 EN DÜŞÜK', value: _fmt(kline.low), color: const Color(0xFFF23645)),
-                  _OhlcItem(label: '📊 HACİM', value: _fmtVol(kline.volume), color: const Color(0xFF58A6FF)),
+                  _OhlcItem(label: 'ACILIS', value: _fmt(kline.open), color: Colors.white70),
+                  _OhlcItem(label: 'EN YUKSEK', value: _fmt(kline.high), color: const Color(0xFF00E676)),
+                  _OhlcItem(label: 'EN DUSUK', value: _fmt(kline.low), color: const Color(0xFFF23645)),
+                  _OhlcItem(label: 'HACIM', value: _fmtVol(kline.volume), color: const Color(0xFF58A6FF)),
                 ],
               ),
             ),
           ],
+          const SizedBox(height: 8),
+
+          // ── REAL-TIME CHART ──
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D1117),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF21262D).withOpacity(0.5)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _buildChart(klineState),
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildChart(dynamic klineState) {
+    final history = klineState.klineHistory as List;
+    final latest = klineState.latestKline;
+
+    // Collect close prices
+    final List<double> prices = [];
+    for (final k in history) {
+      prices.add(k.closeAsDouble);
+    }
+    if (latest != null) {
+      prices.add(latest.closeAsDouble);
+    }
+
+    if (prices.length < 2) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF58A6FF)),
+            const SizedBox(height: 12),
+            Text('Grafik verileri yukleniyor...', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12)),
+          ],
+        ),
+      );
+    }
+
+    final isUp = prices.last >= prices.first;
+    final chartColor = isUp ? const Color(0xFF00E676) : const Color(0xFFF23645);
+
+    return CustomPaint(
+      painter: _PriceChartPainter(prices: prices, color: chartColor),
+      size: Size.infinite,
     );
   }
 
@@ -171,10 +223,10 @@ class _ConnectionDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, label) = switch (state) {
-      WsConnectionState.connected => (const Color(0xFF00E676), '🟢 CANLI'),
-      WsConnectionState.connecting => (Colors.orange, '🟡 BAĞLANIYOR'),
-      WsConnectionState.disconnected => (Colors.red, '🔴 BAĞLI DEĞİL'),
-      WsConnectionState.error => (Colors.red, '❌ HATA'),
+      WsConnectionState.connected => (const Color(0xFF00E676), 'CANLI'),
+      WsConnectionState.connecting => (Colors.orange, 'BAGLANIYOR'),
+      WsConnectionState.disconnected => (Colors.red, 'BAGLI DEGIL'),
+      WsConnectionState.error => (Colors.red, 'HATA'),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -205,5 +257,131 @@ class _OhlcItem extends StatelessWidget {
         Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold, fontFeatures: const [FontFeature.tabularFigures()])),
       ],
     );
+  }
+}
+
+/// Real-time price area chart painter
+class _PriceChartPainter extends CustomPainter {
+  _PriceChartPainter({required this.prices, required this.color});
+  final List<double> prices;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (prices.length < 2 || size.width <= 0 || size.height <= 0) return;
+
+    final double minPrice = prices.reduce((a, b) => a < b ? a : b);
+    final double maxPrice = prices.reduce((a, b) => a > b ? a : b);
+    final double range = maxPrice - minPrice;
+    final double padding = range * 0.05;
+    final double effectiveMin = minPrice - padding;
+    final double effectiveMax = maxPrice + padding;
+    final double effectiveRange = effectiveMax - effectiveMin;
+
+    if (effectiveRange == 0) return;
+
+    // Grid lines
+    final gridPaint = Paint()
+      ..color = const Color(0xFF21262D).withOpacity(0.4)
+      ..strokeWidth = 0.5;
+
+    for (int i = 0; i < 5; i++) {
+      final y = size.height * i / 4;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+
+      // Price labels
+      final priceAtLine = effectiveMax - (effectiveRange * i / 4);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: priceAtLine >= 1000
+              ? priceAtLine.toStringAsFixed(0)
+              : priceAtLine.toStringAsFixed(2),
+          style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 9),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(size.width - tp.width - 4, y + 2));
+    }
+
+    // Build path
+    final path = Path();
+    final linePath = Path();
+    final stepX = size.width / (prices.length - 1);
+
+    for (int i = 0; i < prices.length; i++) {
+      final x = i * stepX;
+      final y = size.height - ((prices[i] - effectiveMin) / effectiveRange * size.height);
+
+      if (i == 0) {
+        path.moveTo(x, y);
+        linePath.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+        linePath.lineTo(x, y);
+      }
+    }
+
+    // Area fill (gradient below line)
+    final fillPath = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    final gradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [color.withOpacity(0.25), color.withOpacity(0.0)],
+    );
+    canvas.drawPath(
+      fillPath,
+      Paint()..shader = gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
+    );
+
+    // Line stroke
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Current price dot
+    final lastX = (prices.length - 1) * stepX;
+    final lastY = size.height - ((prices.last - effectiveMin) / effectiveRange * size.height);
+    canvas.drawCircle(
+      Offset(lastX, lastY),
+      4,
+      Paint()..color = color,
+    );
+    canvas.drawCircle(
+      Offset(lastX, lastY),
+      6,
+      Paint()
+        ..color = color.withOpacity(0.3)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+
+    // Current price label
+    final priceTp = TextPainter(
+      text: TextSpan(
+        text: prices.last >= 1000
+            ? '\$${prices.last.toStringAsFixed(2)}'
+            : '\$${prices.last.toStringAsFixed(4)}',
+        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final labelX = lastX - priceTp.width - 10;
+    priceTp.paint(canvas, Offset(labelX > 0 ? labelX : lastX + 10, lastY - 14));
+  }
+
+  @override
+  bool shouldRepaint(covariant _PriceChartPainter oldDelegate) {
+    return oldDelegate.prices.length != prices.length ||
+        (prices.isNotEmpty && oldDelegate.prices.isNotEmpty && oldDelegate.prices.last != prices.last);
   }
 }
