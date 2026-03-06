@@ -198,9 +198,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       technicalIndicatorProvider(symbol: selectedCoin, interval: _selectedInterval == '1s' ? '1m' : _selectedInterval),
     );
     final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth <= 900;
 
     return Scaffold(
+      key: GlobalKey<ScaffoldState>(), // For drawer control if needed
       backgroundColor: const Color(0xFF0A0E17),
+      drawer: isMobile ? Drawer(
+        backgroundColor: const Color(0xFF0A0E17),
+        child: _buildNavSidebar(isDrawer: true),
+      ) : null,
       body: Column(
         children: [
           // ════════════ CONNECTION BANNER ════════════
@@ -219,32 +225,113 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ),
             ),
           // ════════════ TOP BAR ════════════
-          _buildTopBar(selectedCoin),
+          _buildTopBar(selectedCoin, isMobile),
 
           // ════════════ MAIN CONTENT ════════════
           Expanded(
             child: Row(
               children: [
-                // ────── NAV SIDEBAR ──────
-                _buildNavSidebar(),
+                // ────── NAV SIDEBAR (Desktop Only) ──────
+                if (!isMobile) _buildNavSidebar(),
 
-                // ────── LEFT: Coin List ──────
-                _buildCoinListPanel(marketSummaryAsync, selectedCoin, ref),
-
-                // ────── CENTER: Main Area ──────
+                // ────── CENTER & Panels ──────
                 Expanded(
-                  flex: 3,
-                  child: _buildPageContent(selectedCoin, indicatorAsync),
-                ),
+                  child: isMobile 
+                    ? _buildMobileLayout(selectedCoin, indicatorAsync, marketSummaryAsync)
+                    : Row(
+                        children: [
+                          // ────── LEFT: Coin List ──────
+                          _buildCoinListPanel(marketSummaryAsync, selectedCoin, ref),
+                          
+                          // ────── CENTER: Main Area ──────
+                          Expanded(
+                            flex: 3,
+                            child: _buildPageContent(selectedCoin, indicatorAsync),
+                          ),
 
-                // ────── RIGHT: Technical Gauge + Liquidation Summary ──────
-                if (screenWidth > 900 && _currentPage == 0)
-                  _buildRightPanel(selectedCoin, indicatorAsync),
+                          // ────── RIGHT: Technical Gauge (Desktop Only) ──────
+                          if (screenWidth > 1200 && _currentPage == 0)
+                            _buildRightPanel(selectedCoin, indicatorAsync),
+                        ],
+                      ),
+                ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMobileLayout(String selectedCoin, AsyncValue<TechnicalIndicatorModel?> indicatorAsync, AsyncValue<List<MarketSummaryModel>> marketSummaryAsync) {
+    if (_currentPage != 0) {
+      return _buildPageContent(selectedCoin, indicatorAsync);
+    }
+    
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // In mobile, we might want a horizontal coin selector or just the main chart
+          _buildPriceHeader(selectedCoin, indicatorAsync),
+          Container(
+            height: 400, // Fixed height for chart on mobile scroll
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF30363D)),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: LivePriceWidget(symbol: selectedCoin.toLowerCase(), interval: _selectedInterval),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // On mobile, show indicators below the chart
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: _buildAISummaryCard(indicatorAsync.value ?? const TechnicalIndicatorModel(symbol: '', score: 0, action: 'Neutral', indicators: IndicatorsModel()), selectedCoin),
+          ),
+          const SizedBox(height: 12),
+          // Simplified Market list for mobile at bottom
+          _buildMobileCoinList(marketSummaryAsync, selectedCoin),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileCoinList(AsyncValue<List<MarketSummaryModel>> marketSummaryAsync, String selectedCoin) {
+    return marketSummaryAsync.when(
+      data: (data) => Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: const Color(0xFF0D1117), borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Piyasalar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ...data.take(5).map((coin) {
+              final isSelected = coin.symbol == selectedCoin;
+              return ListTile(
+                dense: true,
+                onTap: () => ref.read(selectedCoinProvider.notifier).state = coin.symbol,
+                tileColor: isSelected ? const Color(0xFF1F6FEB).withOpacity(0.1) : null,
+                leading: Text(getCoinEmoji(coin.symbol), style: const TextStyle(fontSize: 16)),
+                title: Text(coin.symbol.replaceAll('USDT', ''), style: const TextStyle(color: Colors.white, fontSize: 13)),
+                trailing: Text('\$${_formatPrice(coin.lastPrice)}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              );
+            }).toList(),
+            TextButton(
+              onPressed: () => setState(() => _currentPage = 1),
+              child: const Text('Tümünü Gör', style: TextStyle(color: Color(0xFF58A6FF), fontSize: 12)),
+            ),
+          ],
+        ),
+      ),
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 
@@ -812,46 +899,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // ══════════════════════════════════════════════════════════════════
   // TOP APP BAR
   // ══════════════════════════════════════════════════════════════════
-  Widget _buildTopBar(String selectedCoin) {
+
+  Widget _buildTopBar(String selectedCoin, bool isMobile) {
     return Container(
-      height: 56,
+      height: isMobile ? 56 : 50,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0D1117), Color(0xFF161B22)],
-        ),
-        border: Border(
-          bottom: BorderSide(color: const Color(0xFF30363D).withOpacity(0.6)),
-        ),
+        color: const Color(0xFF0D1117),
+        border: Border(bottom: BorderSide(color: const Color(0xFF21262D).withOpacity(0.5))),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          // Logo
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF00D2FF), Color(0xFF7B2FF7)],
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'KG',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
+          if (isMobile)
+            Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white, size: 20),
+                onPressed: () => Scaffold.of(context).openDrawer(),
               ),
             ),
-          ),
+          const Icon(Icons.auto_graph, color: Color(0xFF58A6FF), size: 20),
           const SizedBox(width: 12),
           const Text(
-            'KriptoGraf Finans',
+            'KRIPTOGRAF',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.2,
             ),
           ),
           const SizedBox(width: 8),
@@ -871,33 +945,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             ),
           ),
           const Spacer(),
-          // Exchange badges
-          ..._buildExchangeBadges(),
-          const SizedBox(width: 16),
+          // Exchange badges (Desktop Only)
+          if (!isMobile) ..._buildExchangeBadges(),
+          const SizedBox(width: 8),
           // Alarm button
           IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Color(0xFF8B949E)),
+            icon: const Icon(Icons.notifications_outlined, color: Color(0xFF8B949E), size: 20),
             onPressed: () => _showAlarmDialog(context),
             tooltip: 'Alarm Kur',
           ),
-          const SizedBox(width: 8),
-          // Refresh indicator
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Color(0xFF00E676),
-              shape: BoxShape.circle,
+          if (!isMobile) ...[
+            const SizedBox(width: 8),
+            // Refresh indicator
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF00E676),
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            'Canlı',
-            style: TextStyle(
-              color: const Color(0xFF00E676).withOpacity(0.8),
-              fontSize: 12,
+            const SizedBox(width: 6),
+            Text(
+              'Canlı',
+              style: TextStyle(
+                color: const Color(0xFF00E676).withOpacity(0.8),
+                fontSize: 12,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -937,7 +1013,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // ══════════════════════════════════════════════════════════════════
   // NAV SIDEBAR
   // ══════════════════════════════════════════════════════════════════
-  Widget _buildNavSidebar() {
+  Widget _buildNavSidebar({bool isDrawer = false}) {
     final navItems = [
       {'icon': Icons.dashboard_rounded, 'label': 'Panel', 'index': 0},
       {'icon': Icons.candlestick_chart_rounded, 'label': 'Piyasalar', 'index': 1},
@@ -947,50 +1023,61 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       {'icon': Icons.notifications_rounded, 'label': 'Alarmlar', 'index': 5},
     ];
     return Container(
-      width: 72,
+      width: isDrawer ? double.infinity : 72,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [Color(0xFF0A0E17), Color(0xFF060912)],
         ),
-        border: Border(right: BorderSide(color: const Color(0xFF21262D).withOpacity(0.5))),
+        border: isDrawer ? null : Border(right: BorderSide(color: const Color(0xFF21262D).withOpacity(0.5))),
       ),
       child: Column(
         children: [
-          const SizedBox(height: 16),
+          if (isDrawer) ...[
+            const SizedBox(height: 60),
+            const Text('KRIPTOGRAF PRO', style: TextStyle(color: Color(0xFF58A6FF), fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 40),
+          ] else
+            const SizedBox(height: 16),
+            
           ...navItems.map((item) {
             final isActive = _currentPage == (item['index'] as int);
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+              padding: EdgeInsets.symmetric(vertical: isDrawer ? 8 : 2, horizontal: 8),
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () => setState(() => _currentPage = item['index'] as int),
+                  onTap: () {
+                    setState(() => _currentPage = item['index'] as int);
+                    if (isDrawer) Navigator.pop(context);
+                  },
                   borderRadius: BorderRadius.circular(10),
                   hoverColor: const Color(0xFF1F6FEB).withOpacity(0.08),
                   splashColor: const Color(0xFF1F6FEB).withOpacity(0.15),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: EdgeInsets.symmetric(vertical: isDrawer ? 16 : 10, horizontal: isDrawer ? 16 : 0),
                     decoration: BoxDecoration(
                       color: isActive ? const Color(0xFF1F6FEB).withOpacity(0.15) : Colors.transparent,
                       borderRadius: BorderRadius.circular(10),
                       border: isActive ? Border.all(color: const Color(0xFF1F6FEB).withOpacity(0.4), width: 1) : null,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Row(
+                      mainAxisAlignment: isDrawer ? MainAxisAlignment.start : MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.max,
                       children: [
                         Icon(
                           item['icon'] as IconData,
-                          size: 20,
+                          size: isDrawer ? 24 : 20,
                           color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E),
                         ),
-                        const SizedBox(height: 4),
+                        if (isDrawer) const SizedBox(width: 16),
+                        if (!isDrawer) const SizedBox(height: 4),
                         Text(
                           item['label'] as String,
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: isDrawer ? 14 : 9,
                             fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                             color: isActive ? const Color(0xFF58A6FF) : const Color(0xFF8B949E),
                           ),
@@ -1002,7 +1089,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
               ),
             );
-          }),
+          }).toList(),
           const Spacer(),
           // Version badge at bottom
           Padding(
@@ -1196,6 +1283,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // ══════════════════════════════════════════════════════════════════
   // PRICE HEADER
   // ══════════════════════════════════════════════════════════════════
+  Widget _buildAISummaryCard(TechnicalIndicatorModel indicator, String symbol) {
+    final actionColor = _getActionColor(indicator.action);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: actionColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: Color(0xFF58A6FF), size: 18),
+              const SizedBox(width: 8),
+              Text(
+                '$symbol AI Özeti',
+                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              _buildBadge(indicator.action, actionColor),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Teknik skor ${indicator.score}/100. Mevcut momentum ${indicator.action.toLowerCase()} sinyali veriyor. Balina aktiviteleri ve piyasa derinliği analiz ediliyor...',
+            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(
+            value: indicator.score / 100,
+            backgroundColor: Colors.white.withOpacity(0.05),
+            color: actionColor,
+            minHeight: 4,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPriceHeader(String selectedCoin, AsyncValue<TechnicalIndicatorModel?> indicatorAsync) {
     final coinName = selectedCoin.replaceAll('USDT', '');
 

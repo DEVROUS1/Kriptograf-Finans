@@ -16,8 +16,11 @@ class LivePriceWidget extends ConsumerWidget {
     final kline = klineState.latestKline;
     final connState = klineState.connectionState;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 500;
+
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isSmall ? 10 : 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -26,38 +29,41 @@ class LivePriceWidget extends ConsumerWidget {
             children: [
               Text(
                 symbol.toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1,
+                style: TextStyle(
+                  color: Colors.white, fontSize: isSmall ? 14 : 18, fontWeight: FontWeight.w900, letterSpacing: 1,
                 ),
               ),
               const SizedBox(width: 10),
               _ConnectionDot(state: connState),
               const Spacer(),
-              if (kline != null) _buildMiniStats(kline),
+              if (kline != null && !isSmall) _buildMiniStats(kline),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: isSmall ? 8 : 12),
 
           // ── MAIN PRICE ──
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 150),
             child: kline == null
                 ? _buildLoadingPlaceholder()
-                : _buildPriceRow(kline),
+                : _buildPriceRow(kline, isSmall),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: isSmall ? 8 : 12),
 
           // ── OHLCV BAR ──
           if (kline != null) ...[
             Container(
+              width: double.infinity, // Ensure it spans full width
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFF0D1117),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFF21262D)),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: 10,
+                spacing: 12,
                 children: [
                   _OhlcItem(label: 'ACILIS', value: _fmt(kline.open), color: Colors.white70),
                   _OhlcItem(label: 'EN YUKSEK', value: _fmt(kline.high), color: const Color(0xFF00E676)),
@@ -124,7 +130,7 @@ class LivePriceWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildPriceRow(dynamic kline) {
+  Widget _buildPriceRow(dynamic kline, bool isSmall) {
     final close = kline.closeAsDouble;
     final open = kline.openAsDouble;
     final isPositive = close >= open;
@@ -137,7 +143,7 @@ class LivePriceWidget extends ConsumerWidget {
         Text(
           '\$${close.toStringAsFixed(2)}',
           style: TextStyle(
-            fontSize: 36,
+            fontSize: isSmall ? 24 : 36,
             fontWeight: FontWeight.w900,
             color: isPositive ? const Color(0xFF00E676) : const Color(0xFFF23645),
             fontFeatures: const [FontFeature.tabularFigures()],
